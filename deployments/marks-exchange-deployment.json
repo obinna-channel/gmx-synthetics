@@ -60,5 +60,7 @@
       },
       "notes": "Main price oracle for all FX markets - uses 30 decimal precision"
     }
-  }
+  },
+  "MarksSimplifiedOracle": "0x178a0F71bAB704b989A9930E109aBC11eE9beCe0",
+  "Oracle": "0x178a0F71bAB704b989A9930E109aBC11eE9beCe0"
 }
