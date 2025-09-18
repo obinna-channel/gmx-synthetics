@@ -13,7 +13,8 @@
     "outDir": "dist",
     "declarationMap": true,
     "noImplicitAny": false,
-    "rootDirs": ["./src", "./scripts", "./test"]
+    "rootDirs": ["./src", "./scripts", "./test"],
+    "types": ["node"]
   },
   "exclude": ["dist", "node_modules"],
   "include": ["./test", "./src", "./scripts", "./global.d.ts"],

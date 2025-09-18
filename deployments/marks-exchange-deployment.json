@@ -1,0 +1,64 @@
+{
+  "network": "arbitrumSepolia",
+  "deployedAt": "2025-09-17T22:55:07.561Z",
+  "contracts": {
+    "RoleStore": {
+      "address": "0x81FBD321168655914C895ec63583140aB3eB2341",
+      "deployer": "0xBaB0D0892Bf8563B731f8e8970fE856ce9308292",
+      "deploymentBlock": 195384595,
+      "notes": "Initial deployment - deployer has ROLE_ADMIN"
+    },
+    "DataStore": {
+      "address": "0xE0bf5B90c1d6B1381Ca28BBdb849641C18bcFdf5",
+      "deployer": "0xBaB0D0892Bf8563B731f8e8970fE856ce9308292",
+      "deploymentBlock": 195392620,
+      "roleStoreAddress": "0x81FBD321168655914C895ec63583140aB3eB2341",
+      "notes": "Central storage for all protocol configuration and state"
+    },
+    "EventEmitter": {
+      "address": "0x721572D44714B8DdcA1C4F54A4Ea67335d4EFB96",
+      "deployer": "0xBaB0D0892Bf8563B731f8e8970fE856ce9308292",
+      "deploymentBlock": 195393764,
+      "roleStoreAddress": "0x81FBD321168655914C895ec63583140aB3eB2341",
+      "notes": "Centralized event logging for all protocol actions"
+    },
+    "Router": {
+      "address": "0x04dCDC9569cb3C121a5EC31C2FBfDA2eA8A80655",
+      "deployer": "0xBaB0D0892Bf8563B731f8e8970fE856ce9308292",
+      "deploymentBlock": 195394175,
+      "roleStoreAddress": "0x81FBD321168655914C895ec63583140aB3eB2341",
+      "notes": "Token transfer handler - manages all USDT movements"
+    },
+    "OrderVault": {
+      "address": "0xB5f5319cD63b668163e451fa2c4660eC215Bc591",
+      "deployer": "0xBaB0D0892Bf8563B731f8e8970fE856ce9308292",
+      "deploymentBlock": 195395467,
+      "roleStoreAddress": "0x81FBD321168655914C895ec63583140aB3eB2341",
+      "dataStoreAddress": "0xE0bf5B90c1d6B1381Ca28BBdb849641C18bcFdf5",
+      "notes": "Secure vault for holding USDT during order execution"
+    },
+    "OracleStore": {
+      "address": "0x8644aB2924A5Be1bD6389aA4593dbB277089cD1E",
+      "deployer": "0xBaB0D0892Bf8563B731f8e8970fE856ce9308292",
+      "deploymentBlock": 195408324,
+      "roleStoreAddress": "0x81FBD321168655914C895ec63583140aB3eB2341",
+      "eventEmitterAddress": "0x721572D44714B8DdcA1C4F54A4Ea67335d4EFB96",
+      "notes": "Oracle configuration store"
+    },
+    "Oracle": {
+      "address": "0x1bFA17439e7f91Ee7F7d464FB8B5666D454492E7",
+      "deployer": "0xBaB0D0892Bf8563B731f8e8970fE856ce9308292",
+      "deploymentBlock": 195408324,
+      "roleStoreAddress": "0x81FBD321168655914C895ec63583140aB3eB2341",
+      "oracleStoreAddress": "0x8644aB2924A5Be1bD6389aA4593dbB277089cD1E",
+      "tokenMappings": {
+        "NGN": "0x0000000000000000000000000000000000000001",
+        "ARS": "0x0000000000000000000000000000000000000002",
+        "PKR": "0x0000000000000000000000000000000000000003",
+        "GHS": "0x0000000000000000000000000000000000000004",
+        "COP": "0x0000000000000000000000000000000000000008"
+      },
+      "notes": "Main price oracle for all FX markets - uses 30 decimal precision"
+    }
+  }
+}
