@@ -158,6 +158,13 @@ const getEnvAccounts = (chainName?: string) => {
 };
 
 const config: HardhatUserConfig = {
+  paths: {
+    deployments: "deployments/marks",
+    sources: "./contracts",
+    tests: "./test",
+    cache: "./cache",
+    artifacts: "./artifacts",
+  },
   solidity: {
     compilers: [
       {

@@ -218,9 +218,13 @@ library MarketUtils {
     function validateSwapMarket(DataStore dataStore, Market.Props memory market) internal view {
         validateEnabledMarket(dataStore, market);
 
-        if (market.longToken == market.shortToken) {
-            revert Errors.InvalidSwapMarket(market.marketToken);
-        }
+        // MARKS EXCHANGE MODIFICATION: Allow same token for FX markets
+        // Original code prevented longToken == shortToken
+        // We need USDT for both long and short positions
+        // if (market.longToken == market.shortToken) {
+        //     revert Errors.InvalidSwapMarket(market.marketToken);
+        // }
+    
     }
 
     // @dev get the token price from the stored MarketPrices

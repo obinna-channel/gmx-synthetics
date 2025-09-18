@@ -46,7 +46,7 @@
       "notes": "Oracle configuration store"
     },
     "Oracle": {
-      "address": "0x1bFA17439e7f91Ee7F7d464FB8B5666D454492E7",
+      "address": "0x178a0F71bAB704b989A9930E109aBC11eE9beCe0",
       "deployer": "0xBaB0D0892Bf8563B731f8e8970fE856ce9308292",
       "deploymentBlock": 195408324,
       "roleStoreAddress": "0x81FBD321168655914C895ec63583140aB3eB2341",
