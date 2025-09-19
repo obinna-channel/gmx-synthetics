@@ -1367,6 +1367,27 @@ const config: {
         heartbeatDuration: 144 * 60 * 60,
       },
     },
+    USDT: {
+      address: "0x5fE0CA3aF9Cf758D7F4159295Fd1Cd6a05562bb6", // Your deployed Test USDT
+      decimals: 6,
+      transferGasLimit: 200 * 1000,
+      // USDT doesn't need dataStreamFeedId - it's the base currency (always = 1)
+      // You could use a dummy value or the same pattern as other stables
+      dataStreamFeedId: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      dataStreamFeedDecimals: 18,
+      // No priceFeed needed - USDT is the base currency and always equals 1
+      // GMX will treat it as stable = 1 by default for collateral calculations
+    },
+    sNGN: {
+      address: "0xe0dBA0326623dEcE1712581271ebcD846D67b29f", // Your deployed sNGN stub token
+      decimals: 18, // You deployed sNGN with 18 decimals
+      transferGasLimit: 200 * 1000,
+      // Now using the actual sNGN address in your oracle (after your update)
+      dataStreamFeedId: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      dataStreamFeedDecimals: 18,
+      // sNGN gets its price from your oracle using getPrimaryPrice(sNGN_address)
+      // No priceFeed entry needed - oracle will be called with token address
+    },
     CRV: {
       synthetic: true,
       decimals: 18,

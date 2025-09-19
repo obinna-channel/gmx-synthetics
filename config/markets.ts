@@ -4261,104 +4261,79 @@ const config: {
   ],
   arbitrumSepolia: [
     {
-      tokens: { indexToken: "WETH", longToken: "WETH", shortToken: "USDC.SG" },
-      virtualTokenIdForIndexToken: hashString("PERP:ETH/USD"),
-      virtualMarketId: hashString("SPOT:ETH/USD"),
+      tokens: {
+        indexToken: "sNGN", // Your FX token (price represents USDT/NGN rate)
+        longToken: "USDT", // USDT for long collateral
+        shortToken: "USDT", // USDT for short collateral (same as long - your key modification)
+      },
 
+      // Virtual IDs for cross-market references (optional for isolated FX market)
+      virtualTokenIdForIndexToken: hashString("PERP:USDT/NGN"),
+      virtualMarketId: hashString("FX:USDT/NGN"), // Custom FX market identifier
+
+      // Base configuration for perpetual market
       ...baseMarketConfig,
-      ...fundingRateConfig_Low,
+
+      // Funding rate configuration - using default for balanced funding
+      ...fundingRateConfig_Default,
+
+      // Borrowing rate configuration - using lower rates for FX market
       ...borrowingRateConfig_LowMax_WithLowerBase,
 
-      reserveFactor: percentageToFloat("275%"),
-      openInterestReserveFactor: percentageToFloat("270%"),
+      // Position limits and pool configuration
+      maxLongTokenPoolAmount: expandDecimals(500_000, 6), // 500k USDT max pool
+      maxShortTokenPoolAmount: expandDecimals(500_000, 6), // 500k USDT max pool (same token)
+      maxPoolUsdForDeposit: decimalToFloat(500_000), // $500k max deposit
 
-      maxLongTokenPoolAmount: expandDecimals(32_000, 18),
-      maxShortTokenPoolAmount: expandDecimals(100_000_000, 6),
+      // Open interest limits
+      maxOpenInterest: decimalToFloat(250_000), // $250k max open interest per side
 
-      maxPoolUsdForDeposit: decimalToFloat(50_000_000),
+      // Position impact factors (lower for FX markets due to higher liquidity)
+      negativePositionImpactFactor: exponentToFloat("5e-9"), // 0.0000005%
+      positivePositionImpactFactor: exponentToFloat("2.5e-9"), // 0.00000025%
+      positionImpactExponentFactor: exponentToFloat("2e0"), // Quadratic impact
 
-      negativePositionImpactFactor: exponentToFloat("5e-7"), // 0.0000005
-      positivePositionImpactFactor: exponentToFloat("4.5e-7"), // 0.00000045
+      // Max position impact caps
+      negativeMaxPositionImpactFactor: percentageToFloat("0.3%"), // 0.3% max slippage
+      positiveMaxPositionImpactFactor: percentageToFloat("0.3%"), // 0.3% max slippage
 
-      minPositionImpactPoolAmount: expandDecimals(10, 18), // 10 ETH
+      // No swap impact since both tokens are the same (USDT)
+      negativeSwapImpactFactor: bigNumberify(0),
+      positiveSwapImpactFactor: bigNumberify(0),
 
-      negativeSwapImpactFactor: exponentToFloat("3e-10"),
-      positiveSwapImpactFactor: exponentToFloat("2e-10"),
+      // Minimum collateral factor (determines max leverage)
+      minCollateralFactor: percentageToFloat("2%"), // 50x max leverage
+      minCollateralFactorForLiquidation: percentageToFloat("1%"), // Liquidation at 100x
 
-      minCollateralFactor: percentageToFloat("0.5%"), // 200x leverage
-      minCollateralFactorForLiquidation: percentageToFloat("0.25%"), // 200x leverage
+      // Dynamic min collateral based on OI
+      minCollateralFactorForOpenInterestMultiplier: exponentToFloat("5e-9"),
 
-      minCollateralFactorForOpenInterestMultiplier: exponentToFloat("6e-11"),
+      // Reserve factors (conservative for initial launch)
+      reserveFactor: percentageToFloat("100%"), // 100% of fees to protocol
+      openInterestReserveFactor: percentageToFloat("95%"), // 95% OI reserve
 
-      maxOpenInterest: decimalToFloat(70_000_000),
+      // PnL factors
+      maxPnlFactorForTraders: percentageToFloat("50%"), // Traders can take max 50% of pool
+      maxPnlFactorForDeposits: percentageToFloat("50%"), // Same for deposits
+      maxPnlFactorForWithdrawals: percentageToFloat("30%"), // More conservative for withdrawals
 
-      atomicSwapFeeFactor: percentageToFloat("2.25%"),
+      // ADL (Auto-Deleveraging) thresholds
+      maxPnlFactorForAdl: percentageToFloat("45%"),
+      minPnlFactorAfterAdl: percentageToFloat("40%"),
 
-      maxLendableImpactFactor: exponentToFloat("2e-3"), // 0.002
-      maxLendableImpactFactorForWithdrawals: exponentToFloat("2e-3"), // 0.002
-      maxLendableImpactUsd: decimalToFloat(25), // $25
-    },
-    {
-      tokens: { indexToken: "CRV", longToken: "WETH", shortToken: "USDC.SG" },
-      virtualTokenIdForIndexToken: hashString("PERP:CRV/USD"),
-      virtualMarketId: hashString("SPOT:ETH/USD"),
+      // Position fees (competitive for FX)
+      positionFeeFactorForPositiveImpact: percentageToFloat("0.05%"), // 5 bps
+      positionFeeFactorForNegativeImpact: percentageToFloat("0.07%"), // 7 bps
 
-      ...syntheticMarketConfig,
-      ...fundingRateConfig_High,
-      ...borrowingRateConfig_HighMax_WithHigherBase,
+      // Liquidation fee
+      liquidationFeeFactor: percentageToFloat("0.15%"), // 15 bps liquidation fee
 
-      positionImpactExponentFactor: exponentToFloat("2e0"),
-      negativePositionImpactFactor: exponentToFloat("1.4e-8"),
-      positivePositionImpactFactor: exponentToFloat("1.2e-8"),
+      // Atomic swap fees (if needed for instant execution)
+      atomicSwapFeeFactor: percentageToFloat("0.5%"), // 50 bps for atomic
 
-      negativeSwapImpactFactor: exponentToFloat("3.5e-9"),
-      positiveSwapImpactFactor: exponentToFloat("1.75e-9"),
-
-      minCollateralFactorForOpenInterestMultiplier: exponentToFloat("3.7e-8"),
-
-      reserveFactor: percentageToFloat("65%"), // default is 95%
-      openInterestReserveFactor: percentageToFloat("60%"), // default is 90%
-      maxPnlFactorForTraders: percentageToFloat("50%"), // default is 60%
-
-      maxOpenInterest: decimalToFloat(500_000),
-      maxPoolUsdForDeposit: decimalToFloat(750_000), // 1.5x the max open interest
-
-      maxLongTokenPoolAmount: expandDecimals(400, 18), // ~1M USD (2x the max open interest)
-      maxShortTokenPoolAmount: expandDecimals(1_000_000, 6), // ~1M USD (2x the max open interest)
-    },
-    {
-      tokens: { indexToken: "BTC", longToken: "BTC", shortToken: "USDC.SG" },
-      virtualTokenIdForIndexToken: hashString("PERP:BTC/USD"),
-      virtualMarketId: hashString("SPOT:BTC/USD"),
-
-      ...baseMarketConfig,
-      ...fundingRateConfig_Low,
-      ...borrowingRateConfig_LowMax_WithLowerBase,
-
-      reserveFactor: percentageToFloat("245%"),
-      openInterestReserveFactor: percentageToFloat("240%"),
-
-      maxLongTokenPoolAmount: expandDecimals(2200, 8),
-      maxShortTokenPoolAmount: expandDecimals(110_000_000, 6),
-
-      maxPoolUsdForDeposit: decimalToFloat(60_000_000),
-
-      negativePositionImpactFactor: exponentToFloat("9e-11"),
-      positivePositionImpactFactor: exponentToFloat("3e-11"),
-
-      minPositionImpactPoolAmount: expandDecimals(95, 6), // 0.95 BTC
-
-      negativeSwapImpactFactor: exponentToFloat("4e-10"), // 0.05% for 1,250,000 USD of imbalance
-      positiveSwapImpactFactor: exponentToFloat("2e-10"), // 0.05% for 2,500,000 USD of imbalance
-
-      minCollateralFactor: percentageToFloat("0.5%"), // 200x leverage
-      minCollateralFactorForLiquidation: percentageToFloat("0.5%"), // 200x leverage
-
-      minCollateralFactorForOpenInterestMultiplier: exponentToFloat("6e-11"),
-
-      maxOpenInterest: decimalToFloat(60_000_000),
-
-      atomicSwapFeeFactor: percentageToFloat("0.75%"),
+      // No position impact pool for initial launch
+      positionImpactPoolDistributionRate: bigNumberify(0),
+      minPositionImpactPoolAmount: bigNumberify(0),
     },
   ],
   arbitrumGoerli: [

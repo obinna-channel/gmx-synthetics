@@ -693,6 +693,12 @@ async function validatePerpConfig({
     return;
   }
 
+  const fxTokens = ["sNGN", "sARS", "sPKR", "sGHS", "sCOP"];
+  if (fxTokens.includes(indexTokenSymbol)) {
+    console.log(`Skipping validation for FX token: ${indexTokenSymbol}`);
+    return; // Skip validation for FX markets
+  }
+
   const marketLabel = `${indexTokenSymbol} [${longTokenSymbol}-${shortTokenSymbol}]`;
 
   if (!marketConfig.minCollateralFactor.eq(marketConfig.minCollateralFactorForLiquidation)) {
