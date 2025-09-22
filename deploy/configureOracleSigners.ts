@@ -7,7 +7,7 @@ const func = async ({ deployments, getNamedAccounts, gmx }: HardhatRuntimeEnviro
   const { read, execute, log } = deployments;
   const { deployer } = await getNamedAccounts();
   const oracleConfig = await gmx.getOracle();
-  const oracleSigners = oracleConfig.signers.map((s) => ethers.utils.getAddress(s));
+  const oracleSigners = ["0xBaB0D0892Bf8563B731f8e8970fE856ce9308292"];
 
   const existingSignersCount = await read("OracleStore", "getSignerCount");
   const existingSigners = await read("OracleStore", "getSigners", 0, existingSignersCount);
@@ -27,7 +27,7 @@ const func = async ({ deployments, getNamedAccounts, gmx }: HardhatRuntimeEnviro
     }
   }
 
-  await setUintIfDifferent(keys.MIN_ORACLE_SIGNERS, oracleConfig.minOracleSigners, "min oracle signers");
+  await setUintIfDifferent(keys.MIN_ORACLE_SIGNERS, 1, "min oracle signers");
 };
 func.tags = ["OracleSigners"];
 func.dependencies = ["RoleStore", "OracleStore", "DataStore"];
