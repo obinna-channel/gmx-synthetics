@@ -21,12 +21,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration
-ORACLE_ADDRESS = "0x2b44fd56615FFA5F2980cA624871716340762238"  # GMX Oracle
+ORACLE_ADDRESS = "0xE89d94669f49D278cCD094A084139eB6639C0a93"  # GMX Oracle (from new deployment)
 ARBITRUM_TESTNET_RPC = "https://sepolia-rollup.arbitrum.io/rpc"
 
 # Currency identifiers mapping
 CURRENCY_IDENTIFIERS = {
-    "USDTNGN": "0xe0dBA0326623dEcE1712581271ebcD846D67b29f",
+    "USDTNGN": "0xd66e60AA5b6982649a116e6944Daec22b15468Ad",  # sNGN token address
 }
 
 '''

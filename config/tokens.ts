@@ -1379,7 +1379,7 @@ const config: {
       // GMX will treat it as stable = 1 by default for collateral calculations
     },
     sNGN: {
-      address: "0xe0dBA0326623dEcE1712581271ebcD846D67b29f", // Your deployed sNGN stub token
+      address: "0xd66e60AA5b6982649a116e6944Daec22b15468Ad", // Newly deployed sNGN token
       decimals: 18, // You deployed sNGN with 18 decimals
       transferGasLimit: 200 * 1000,
       // Now using the actual sNGN address in your oracle (after your update)

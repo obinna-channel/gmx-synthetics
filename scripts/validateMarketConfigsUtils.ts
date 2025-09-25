@@ -634,6 +634,18 @@ const recommendedMarketConfig = {
       expectedSwapImpactRatio: 20_000,
       expectedPositionImpactRatio: 11_600,
     },
+    sNGN: {
+      negativePositionImpactFactor: exponentToFloat("5e-9"),
+      negativeSwapImpactFactor: exponentToFloat("1e-8"),
+      expectedSwapImpactRatio: 10_000,
+      expectedPositionImpactRatio: 20_000,
+    },
+    USDT: {
+      negativePositionImpactFactor: exponentToFloat("5e-9"),
+      negativeSwapImpactFactor: exponentToFloat("1e-8"),
+      expectedSwapImpactRatio: 10_000,
+      expectedPositionImpactRatio: 20_000,
+    },
   },
   botanix: {
     "BTC:pBTC:pBTC": {
@@ -660,6 +672,9 @@ const recommendedMarketConfig = {
 const configTokenMapping = {
   arbitrum: {
     "WBTC.e": "BTC",
+  },
+  arbitrumSepolia: {
+    // Add any token mappings needed for Sepolia
   },
 };
 
@@ -693,11 +708,13 @@ async function validatePerpConfig({
     return;
   }
 
+  /*
   const fxTokens = ["sNGN", "sARS", "sPKR", "sGHS", "sCOP"];
   if (fxTokens.includes(indexTokenSymbol)) {
     console.log(`Skipping validation for FX token: ${indexTokenSymbol}`);
     return; // Skip validation for FX markets
   }
+    */
 
   const marketLabel = `${indexTokenSymbol} [${longTokenSymbol}-${shortTokenSymbol}]`;
 
@@ -1235,6 +1252,17 @@ export async function validateMarketConfigs() {
     }
 
     const marketConfig = marketConfigByKey[marketKey];
+
+    if (!marketConfig) {
+      console.log(
+        "SKIPPING MARKET WITHOUT CONFIG: %s index: %s long: %s short: %s",
+        market.marketToken,
+        indexTokenSymbol?.padEnd(5) || "(swap only)",
+        longTokenSymbol?.padEnd(5),
+        shortTokenSymbol?.padEnd(5)
+      );
+      continue;
+    }
 
     console.log(
       "%s index: %s long: %s short: %s",

@@ -1,0 +1,8 @@
+{
+  "mockOracleProvider": "0x5D85d4acd35ffD0daD76C5eB0da3d7e53e20cCC5",
+  "providerEnabledKey": "0x99e5dbc39cae12eb1121808395eebce086146e9e7c0e4524d7490e0f183bcff6",
+  "usdtPrice": "1000000000000000000000000",
+  "sngnPrice": "666666666",
+  "deployedAt": "2025-09-25T05:53:19.424Z",
+  "network": "arbitrumSepolia"
+}
