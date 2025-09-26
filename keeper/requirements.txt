@@ -1,0 +1,13 @@
+# Core dependencies for Order Keeper
+web3==6.11.3
+websockets==12.0
+python-dotenv==1.0.0
+certifi  # For SSL certificate verification
+
+# For the existing oracle keeper
+httpx==0.25.2
+
+# Optional - for production
+# redis==5.0.1
+# prometheus-client==0.19.0
+# structlog==23.2.0
