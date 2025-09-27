@@ -71,11 +71,12 @@ class OrderKeeper:
         self.MOCK_PROVIDER = self.load_mock_provider_address()
 
         # Price configuration (hardcoded for now)
-        # USDT: $1.00 with 30 decimals precision and 6 token decimals
-        # sNGN: $1/1500 with 30 decimals precision and 18 token decimals
+        # USD Pricing (Original):
+        # USDT: $1.00 USD (with 30 decimals precision and 6 token decimals)
+        # sNGN: $0.000666667 USD or $1/1500 (with 30 decimals precision and 18 token decimals)
         self.PRICES = {
-            self.USDT: 10**24,           # $1.00 (10^(30-6))
-            self.sNGN: 10**12 // 1500,    # $1/1500 (10^(30-18) / 1500)
+            self.USDT: 10**24,           # $1.00 USD (10^(30-6))
+            self.sNGN: 10**12 // 1500,    # $0.000666667 USD (10^(30-18) / 1500)
         }
 
         # Event signatures
@@ -403,7 +404,15 @@ class OrderKeeper:
                 if receipt.status == 1:
                     token_name = 'USDT' if token_address.lower() == self.USDT.lower() else \
                                  'sNGN' if token_address.lower() == self.sNGN.lower() else 'WETH'
-                    print(f"  ✅ {token_name} price updated: {price}")
+                    # Display price in human-readable format (USD terms)
+                    if token_name == 'USDT':
+                        usd_value = price / (10**24)  # Convert to USD
+                        print(f"  ✅ {token_name} price updated: ${usd_value:.2f} USD")
+                    elif token_name == 'sNGN':
+                        usd_value = price / (10**12)  # Convert to USD
+                        print(f"  ✅ {token_name} price updated: ${usd_value:.6f} USD (1/{1/usd_value:.0f})")
+                    else:
+                        print(f"  ✅ {token_name} price updated: {price}")
                 else:
                     print(f"  ❌ Failed to update price for {token_address}")
                     return False
