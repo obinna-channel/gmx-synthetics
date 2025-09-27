@@ -63,20 +63,19 @@ class OrderKeeper:
         self.DATA_STORE = "0xD70154A2e4BEF0485Bb6d90265a4F878A4556111"
         self.ORDER_HANDLER = "0x83f2D66af7f794893C31c0B32BD2D4cE826871d7"
 
-        # Token addresses
-        self.USDT = "0x5fE0CA3aF9Cf758D7F4159295Fd1Cd6a05562bb6"
-        self.sNGN = "0xd66e60AA5b6982649a116e6944Daec22b15468Ad"
+        # Token addresses (Updated for mUSD/mNGN market)
+        self.USDT = "0x85bf04B07A6df0172372b959C1C73F3e90F73faf"  # mUSD
+        self.sNGN = "0x2e08218698339AFdba205312cc23dAe8c3690827"  # mNGN
 
         # MockOracleProvider address (will be loaded from file if exists)
         self.MOCK_PROVIDER = self.load_mock_provider_address()
 
-        # Price configuration (hardcoded for now)
-        # USD Pricing (Original):
-        # USDT: $1.00 USD (with 30 decimals precision and 6 token decimals)
-        # sNGN: $0.000666667 USD or $1/1500 (with 30 decimals precision and 18 token decimals)
+        # Price configuration (Exchange Rate Pricing for mUSD/mNGN)
+        # mUSD: 1500 NGN (with 30 decimals precision and 6 token decimals)
+        # mNGN: 1 NGN (with 30 decimals precision and 18 token decimals)
         self.PRICES = {
-            self.USDT: 10**24,           # $1.00 USD (10^(30-6))
-            self.sNGN: 10**12 // 1500,    # $0.000666667 USD (10^(30-18) / 1500)
+            self.USDT: 1500 * 10**24,    # 1500 NGN per mUSD (1500 * 10^(30-6))
+            self.sNGN: 10**12,            # 1 NGN per mNGN (10^(30-18))
         }
 
         # Event signatures
@@ -326,7 +325,7 @@ class OrderKeeper:
                     collateral_amount = self.datastore.functions.getUint(collateral_key).call()
 
                     print(f"     Position Size: {position_size / 10**30:.2f} USD")
-                    print(f"     Position Collateral: {collateral_amount / 10**6:.4f} USDT")
+                    print(f"     Position Collateral: {collateral_amount / 10**6:.4f} mUSD")
                     print(f"     Attempting to decrease: {order['sizeDeltaUsd'] / 10**30:.2f} USD")
 
                     if position_size < order['sizeDeltaUsd']:
@@ -402,15 +401,15 @@ class OrderKeeper:
                 receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
 
                 if receipt.status == 1:
-                    token_name = 'USDT' if token_address.lower() == self.USDT.lower() else \
-                                 'sNGN' if token_address.lower() == self.sNGN.lower() else 'WETH'
-                    # Display price in human-readable format (USD terms)
-                    if token_name == 'USDT':
-                        usd_value = price / (10**24)  # Convert to USD
-                        print(f"  ✅ {token_name} price updated: ${usd_value:.2f} USD")
-                    elif token_name == 'sNGN':
-                        usd_value = price / (10**12)  # Convert to USD
-                        print(f"  ✅ {token_name} price updated: ${usd_value:.6f} USD (1/{1/usd_value:.0f})")
+                    token_name = 'mUSD' if token_address.lower() == self.USDT.lower() else \
+                                 'mNGN' if token_address.lower() == self.sNGN.lower() else 'WETH'
+                    # Display price in human-readable format (NGN terms)
+                    if token_name == 'mUSD':
+                        ngn_value = price / (10**24)  # Convert to NGN
+                        print(f"  ✅ {token_name} price updated: {ngn_value:.0f} NGN")
+                    elif token_name == 'mNGN':
+                        ngn_value = price / (10**12)  # Convert to NGN
+                        print(f"  ✅ {token_name} price updated: {ngn_value:.0f} NGN")
                     else:
                         print(f"  ✅ {token_name} price updated: {price}")
                 else:
@@ -429,9 +428,9 @@ class OrderKeeper:
         # Get unique tokens involved
         tokens = []
 
-        # Always include market tokens (USDT and sNGN for the market)
-        tokens.append(self.USDT)
-        tokens.append(self.sNGN)
+        # Always include market tokens (mUSD and mNGN for the market)
+        tokens.append(self.USDT)  # mUSD
+        tokens.append(self.sNGN)  # mNGN
 
         # Add collateral token if different
         collateral_token = order.get('initialCollateralToken')
