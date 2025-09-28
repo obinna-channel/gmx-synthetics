@@ -15,6 +15,9 @@ This deployment is a fork of GMX V2 for the Marks protocol, creating synthetic N
 |------|--------|---------|----------|------|
 | Test USDT | USDT | `0x5fE0CA3aF9Cf758D7F4159295Fd1Cd6a05562bb6` | 6 | [View on Explorer](https://sepolia.arbiscan.io/address/0x5fE0CA3aF9Cf758D7F4159295Fd1Cd6a05562bb6) |
 | Synthetic Nigerian Naira | sNGN | `0xd66e60AA5b6982649a116e6944Daec22b15468Ad` | 18 | [View on Explorer](https://sepolia.arbiscan.io/address/0xd66e60AA5b6982649a116e6944Daec22b15468Ad) |
+| Mock Nigerian Naira | mNGN | `0x2e08218698339AFdba205312cc23dAe8c3690827` | 18 | [View on Explorer](https://sepolia.arbiscan.io/address/0x2e08218698339AFdba205312cc23dAe8c3690827) |
+| Marks USD | mUSD | `0x85bf04B07A6df0172372b959C1C73F3e90F73faf` | 6 | [View on Explorer](https://sepolia.arbiscan.io/address/0x85bf04B07A6df0172372b959C1C73F3e90F73faf) |
+| USDT/NGN Index | mUSDTNGN | `0x168e829F546940AE7Ab336aF4Bd95d07f7f6cE73` | 18 | [View on Explorer](https://sepolia.arbiscan.io/address/0x168e829F546940AE7Ab336aF4Bd95d07f7f6cE73) |
 
 ## Markets
 
@@ -22,7 +25,13 @@ This deployment is a fork of GMX V2 for the Marks protocol, creating synthetic N
 |--------|-------------|------------|-------------|--------------|------|
 | Market 1: sNGN [USDT-sNGN] | sNGN | USDT | sNGN | `0x53b49A28054D108d7050B0E5C317001bE984EB2D` | [View on Explorer](https://sepolia.arbiscan.io/address/0x53b49A28054D108d7050B0E5C317001bE984EB2D) |
 | Market 2: sNGN [USDT-USDT] | sNGN | USDT | USDT | `0xb1faf4aFd5bd6aA53CF056BBA31CCa1C44234a24` | [View on Explorer](https://sepolia.arbiscan.io/address/0xb1faf4aFd5bd6aA53CF056BBA31CCa1C44234a24) |
-| Market 3: USDT [USDT-sNGN] | USDT | sNGN | USDT | `0x8E4C5f3296A100d4135187C3181258cb8a223bb1` | [View on Explorer](https://sepolia.arbiscan.io/address/0x8E4C5f3296A100d4135187C3181258cb8a223bb1) |
+| Market 3: USDT [USDT-sNGN] | USDT | USDT | sNGN | `0x8E4C5f3296A100d4135187C3181258cb8a223bb1` | [View on Explorer](https://sepolia.arbiscan.io/address/0x8E4C5f3296A100d4135187C3181258cb8a223bb1) |
+| Market 4: mNGN [USDT-mNGN] | mNGN | USDT | mNGN | `0x2926c00ACE0D5915b222E4767D2D67CE960bFd2f` | [View on Explorer](https://sepolia.arbiscan.io/address/0x2926c00ACE0D5915b222E4767D2D67CE960bFd2f) |
+| Market 5: USDT [USDT-mNGN] | USDT | USDT | mNGN | `0x2AE76b768a26CA2DfCcd7ccB46273D3C8283C2A7` | [View on Explorer](https://sepolia.arbiscan.io/address/0x2AE76b768a26CA2DfCcd7ccB46273D3C8283C2A7) |
+| Market 6: mNGN [mNGN-USDT] | mNGN | mNGN | USDT | `0xD5e527b02d691054AEDd4733029aa06E895EA3CD` | [View on Explorer](https://sepolia.arbiscan.io/address/0xD5e527b02d691054AEDd4733029aa06E895EA3CD) |
+| Market 7: mUSD [mUSD-mNGN] | mUSD | mUSD | mNGN | `0xf7F4Bb2014A164A919Ccec2b97Bd4805f86B83aD` | [View on Explorer](https://sepolia.arbiscan.io/address/0xf7F4Bb2014A164A919Ccec2b97Bd4805f86B83aD) |
+| Market 8: mNGN [mUSD-mNGN] | mNGN | mUSD | mNGN | `0xb0D93252624e03138a261689eDE446F6BEd768BF` | [View on Explorer](https://sepolia.arbiscan.io/address/0xb0D93252624e03138a261689eDE446F6BEd768BF) |
+| Market 9: mUSDTNGN [mUSD-mNGN] | mUSDTNGN | mUSD | mNGN | `0x5E63276Caae0FF49b2762b98A1d37941AA50F804` | [View on Explorer](https://sepolia.arbiscan.io/address/0x5E63276Caae0FF49b2762b98A1d37941AA50F804) |
 
 ## Core Contracts
 

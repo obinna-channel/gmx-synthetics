@@ -10,8 +10,8 @@ async function main() {
     const DEPOSIT_HANDLER = "0x91829f4Aa7CB2560aDB30e543b994575f3fE0D00";
     const DATA_STORE = "0xD70154A2e4BEF0485Bb6d90265a4F878A4556111";
     const USDT = "0x5fE0CA3aF9Cf758D7F4159295Fd1Cd6a05562bb6";
-    const sNGN = "0xd66e60AA5b6982649a116e6944Daec22b15468Ad";
-    const MARKET = "0x8E4C5f3296A100d4135187C3181258cb8a223bb1";
+    const mNGN = "0x2e08218698339AFdba205312cc23dAe8c3690827";
+    const MARKET = "0x2926c00ACE0D5915b222E4767D2D67CE960bFd2f"; // Market 4: mNGN/USDT/mNGN
     const MOCK_PROVIDER = "0x5D85d4acd35ffD0daD76C5eB0da3d7e53e20cCC5";
 
     // Read deposit key
@@ -44,7 +44,7 @@ async function main() {
     // Build oracle params with provider
     console.log("\n📍 Building oracle params with mock provider...");
     const oracleParams = {
-        tokens: [USDT, sNGN],
+        tokens: [USDT, mNGN],
         providers: [MOCK_PROVIDER, MOCK_PROVIDER], // Same provider for both tokens
         data: ["0x", "0x"] // Empty data since mock provider doesn't need it
     };

@@ -3,28 +3,25 @@ const fs = require("fs");
 
 async function main() {
     const [signer] = await ethers.getSigners();
-    console.log("=== Executing Normal Deposit with Mock Oracle Provider ===\n");
+    console.log("=== Executing Normal mUSD Deposit with Mock Oracle Provider ===\n");
     console.log("Executor address:", signer.address);
 
     // Contract addresses
     const DEPOSIT_HANDLER = "0x91829f4Aa7CB2560aDB30e543b994575f3fE0D00";
     const DATA_STORE = "0xD70154A2e4BEF0485Bb6d90265a4F878A4556111";
-    const USDT = "0x5fE0CA3aF9Cf758D7F4159295Fd1Cd6a05562bb6";
+    const mUSD = "0x85bf04B07A6df0172372b959C1C73F3e90F73faf";
     const mNGN = "0x2e08218698339AFdba205312cc23dAe8c3690827";
-    const MARKET = "0x2AE76b768a26CA2DfCcd7ccB46273D3C8283C2A7"; // Market 5: USDT/USDT/mNGN
-
-    // Use the existing mock provider
+    const MARKET = "0xb0D93252624e03138a261689eDE446F6BEd768BF"; // mNGN/mUSD/mNGN market
     const MOCK_PROVIDER = "0x5D85d4acd35ffD0daD76C5eB0da3d7e53e20cCC5";
-    console.log("Using Mock Provider:", MOCK_PROVIDER);
 
     // Read deposit key
     let depositKey;
     try {
-        depositKey = fs.readFileSync("latest-normal-deposit-key.txt", "utf8").trim();
+        depositKey = fs.readFileSync("latest-musd-normal-deposit-key.txt", "utf8").trim();
         console.log("Deposit Key:", depositKey);
     } catch (e) {
         console.log("❌ Could not read deposit key");
-        console.log("  Please run: npx hardhat run claude/scripts/create-normal-deposit.js --network arbitrumSepolia");
+        console.log("  Please run: npx hardhat run scripts/create-musd-normal-deposit.js --network arbitrumSepolia");
         return;
     }
 
@@ -49,7 +46,7 @@ async function main() {
     // Build oracle params with provider
     console.log("\n📍 Building oracle params with mock provider...");
     const oracleParams = {
-        tokens: [USDT, mNGN],
+        tokens: [mUSD, mNGN],
         providers: [MOCK_PROVIDER, MOCK_PROVIDER], // Same provider for both tokens
         data: ["0x", "0x"] // Empty data since mock provider doesn't need it
     };
@@ -57,6 +54,20 @@ async function main() {
     console.log("  Tokens:", oracleParams.tokens);
     console.log("  Providers:", oracleParams.providers);
     console.log("  Data:", oracleParams.data);
+
+    console.log("\n💱 Exchange Rate Pricing:");
+    console.log("  1 mUSD = 1500 NGN");
+    console.log("  1 mNGN = 1 NGN");
+    console.log("  Deposit: 100,000 mUSD + 150,000,000 mNGN = 300,000,000 NGN total");
+
+    // Get market token contract to check balances
+    const marketToken = await ethers.getContractAt("MarketToken", MARKET);
+    const totalSupplyBefore = await marketToken.totalSupply();
+    const userBalanceBefore = await marketToken.balanceOf(signer.address);
+
+    console.log("\n📊 Market Status Before:");
+    console.log("  Total Supply:", ethers.utils.formatEther(totalSupplyBefore));
+    console.log("  Your Balance:", ethers.utils.formatEther(userBalanceBefore));
 
     // Execute deposit
     console.log("\n📍 Executing deposit...");
@@ -84,21 +95,26 @@ async function main() {
         console.log("  Status:", receipt.status ? "SUCCESS ✅" : "FAILED ❌");
         console.log("  Gas used:", receipt.gasUsed.toString());
 
-        // Check market token balance for the depositor
-        const marketToken = await ethers.getContractAt("MarketToken", MARKET);
-        const totalSupply = await marketToken.totalSupply();
-        const userBalance = await marketToken.balanceOf(signer.address);
+        // Check market token balances after
+        const totalSupplyAfter = await marketToken.totalSupply();
+        const userBalanceAfter = await marketToken.balanceOf(signer.address);
 
-        console.log("\n🎯 Market Token Status:");
-        console.log("  Total Supply:", ethers.utils.formatEther(totalSupply));
-        console.log("  Your Balance:", ethers.utils.formatEther(userBalance));
+        console.log("\n🎯 Market Token Status After:");
+        console.log("  Total Supply:", ethers.utils.formatEther(totalSupplyAfter));
+        console.log("  Your Balance:", ethers.utils.formatEther(userBalanceAfter));
 
-        if (userBalance.gt(0)) {
-            console.log("\n🎉 SUCCESS! You received market tokens!");
-            console.log("  This confirms liquidity was successfully added to the market");
+        const tokensReceived = userBalanceAfter.sub(userBalanceBefore);
+        const supplyIncrease = totalSupplyAfter.sub(totalSupplyBefore);
+
+        if (tokensReceived.gt(0)) {
+            console.log("\n🎉 SUCCESS! Normal deposit completed!");
+            console.log("  Market tokens received:", ethers.utils.formatEther(tokensReceived));
+            console.log("  Total supply increased by:", ethers.utils.formatEther(supplyIncrease));
+            console.log("\n💰 You are now a liquidity provider!");
+            console.log("  You will earn fees from trading activity in this market");
         } else if (receipt.status === 1) {
-            console.log("\n⚠️  Transaction succeeded but no market tokens received");
-            console.log("  This might indicate the deposit was cancelled internally");
+            console.log("\n⚠️ Transaction succeeded but no market tokens received");
+            console.log("  Deposit may have been cancelled internally");
         }
 
         console.log("\nView on Arbiscan:");
@@ -120,12 +136,6 @@ async function main() {
             const errorData = error.error.data.substring(0, 10);
             if (errorSignatures[errorData]) {
                 console.log("\n📝 Error type:", errorSignatures[errorData]);
-
-                if (errorData === "0x68b49e6c") {
-                    console.log("  Solution: Run claude/scripts/set-token-providers.js to configure token providers");
-                } else if (errorData === "0xd84b8ee8") {
-                    console.log("  Solution: Deposit has timed out, create a new deposit");
-                }
             }
         }
     }

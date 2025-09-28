@@ -1378,6 +1378,17 @@ const config: {
       // No priceFeed needed - USDT is the base currency and always equals 1
       // GMX will treat it as stable = 1 by default for collateral calculations
     },
+    mUSD: {
+      address: "0x85bf04B07A6df0172372b959C1C73F3e90F73faf", // Your deployed Marks USD
+      decimals: 6,
+      transferGasLimit: 200 * 1000,
+      // USDT doesn't need dataStreamFeedId - it's the base currency (always = 1)
+      // You could use a dummy value or the same pattern as other stables
+      dataStreamFeedId: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      dataStreamFeedDecimals: 18,
+      // No priceFeed needed - USDT is the base currency and always equals 1
+      // GMX will treat it as stable = 1 by default for collateral calculations
+    },
     sNGN: {
       address: "0xd66e60AA5b6982649a116e6944Daec22b15468Ad", // Newly deployed sNGN token
       decimals: 18, // You deployed sNGN with 18 decimals
@@ -1387,6 +1398,20 @@ const config: {
       dataStreamFeedDecimals: 18,
       // sNGN gets its price from your oracle using getPrimaryPrice(sNGN_address)
       // No priceFeed entry needed - oracle will be called with token address
+    },
+    mNGN: {
+      address: "0x2e08218698339AFdba205312cc23dAe8c3690827", // Newly deployed mNGN token
+      decimals: 18, // You deployed mNGN with 18 decimals
+      transferGasLimit: 200 * 1000,
+      dataStreamFeedId: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      dataStreamFeedDecimals: 18,
+    },
+    mUSDTNGN: {
+      address: "0x168e829F546940AE7Ab336aF4Bd95d07f7f6cE73", // Newly deployed mUSDTNGN token
+      decimals: 18, // You deployed mNGN with 18 decimals
+      transferGasLimit: 200 * 1000,
+      dataStreamFeedId: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      dataStreamFeedDecimals: 18,
     },
     CRV: {
       synthetic: true,

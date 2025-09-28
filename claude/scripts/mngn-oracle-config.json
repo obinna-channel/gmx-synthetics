@@ -1,0 +1,11 @@
+{
+  "mNGN": "0x2e08218698339AFdba205312cc23dAe8c3690827",
+  "USDT": "0x5fE0CA3aF9Cf758D7F4159295Fd1Cd6a05562bb6",
+  "mockProvider": "0x5D85d4acd35ffD0daD76C5eB0da3d7e53e20cCC5",
+  "usdtPrice": "1500000000000000000000000000",
+  "mNGNPrice": "1000000000000",
+  "mNGNProviderKey": "0xb11d99a2143891b1536e8eadc330d59dea90482d06b08cee6622bea91c089de5",
+  "exchangeRate": "1 USDT = 1500 mNGN",
+  "configuredAt": "2025-09-27T09:26:27.381Z",
+  "network": "arbitrumSepolia"
+}

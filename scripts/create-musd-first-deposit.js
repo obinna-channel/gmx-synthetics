@@ -2,27 +2,27 @@ const { ethers } = require("hardhat");
 
 async function main() {
     const [signer] = await ethers.getSigners();
-    console.log("=== Creating Normal Deposit for USDT/USDT/mNGN Market ===\n");
+    console.log("=== Creating First Deposit for mUSD/mUSD/mNGN Market ===\n");
     console.log("Signer address:", signer.address);
 
     // Contract addresses
     const EXCHANGE_ROUTER = "0x3B33708e9b8242999459EB9b4756C24c846e5936";
     const DEPOSIT_VAULT = "0x8672091de3AF3a02bE48cFB753810A736D9F6379";
     const DATA_STORE = "0xD70154A2e4BEF0485Bb6d90265a4F878A4556111";
-    const MARKET = "0x2AE76b768a26CA2DfCcd7ccB46273D3C8283C2A7"; // Market 5: USDT/USDT/mNGN
-    const USDT = "0x5fE0CA3aF9Cf758D7F4159295Fd1Cd6a05562bb6";
+    const MARKET = "0xb0D93252624e03138a261689eDE446F6BEd768BF"; // mNGN/mUSD/mNGN market
+    const mUSD = "0x85bf04B07A6df0172372b959C1C73F3e90F73faf";
     const mNGN = "0x2e08218698339AFdba205312cc23dAe8c3690827";
     const ROUTER = "0x6C71eD3bE6D3966F34162Cbda0195a6778096fAc";
 
-    console.log("📍 Using USDT/USDT/mNGN Market:", MARKET);
-    console.log("   Index Token: USDT");
-    console.log("   Long Token: USDT");
+    console.log("📍 Using mNGN/mUSD/mNGN Market:", MARKET);
+    console.log("   Index Token: mNGN");
+    console.log("   Long Token: mUSD");
     console.log("   Short Token: mNGN\n");
 
     // Get contracts
     const exchangeRouter = await ethers.getContractAt("ExchangeRouter", EXCHANGE_ROUTER);
     const dataStore = await ethers.getContractAt("DataStore", DATA_STORE);
-    const usdt = await ethers.getContractAt("IERC20", USDT);
+    const musd = await ethers.getContractAt("IERC20", mUSD);
     const mngn = await ethers.getContractAt("IERC20", mNGN);
     const depositVault = await ethers.getContractAt("DepositVault", DEPOSIT_VAULT);
 
@@ -34,33 +34,33 @@ async function main() {
         : WNT;
     console.log("Using WNT/WETH:", WETH);
 
-    // Deposit amounts - balanced 1:1 in USD value with exchange rate pricing
-    const usdtAmount = ethers.utils.parseUnits("1000", 6); // 1000 USDT
-    const mngnAmount = ethers.utils.parseUnits("1500000", 18); // 1,500,000 mNGN (at 1 USDT = 1500 mNGN rate)
+    // VERY SMALL deposit amounts for testing exchange rate pricing
+    const musdAmount = ethers.utils.parseUnits("1", 6); // 1 mUSD
+    const mngnAmount = ethers.utils.parseUnits("1500", 18); // 1,500 mNGN (equals 1 mUSD at 1:1500 rate)
     const executionFee = ethers.utils.parseEther("0.001"); // 0.001 ETH
 
-    console.log("\n📊 Deposit Configuration:");
-    console.log("  USDT amount:", ethers.utils.formatUnits(usdtAmount, 6));
+    console.log("\n📊 First Deposit Configuration (Minimal Test):");
+    console.log("  mUSD amount:", ethers.utils.formatUnits(musdAmount, 6));
     console.log("  mNGN amount:", ethers.utils.formatUnits(mngnAmount, 18));
+    console.log("  Total liquidity: 3,000 NGN");
     console.log("  Execution fee:", ethers.utils.formatEther(executionFee), "ETH");
-    console.log("  Receiver:", signer.address); // Your address instead of address(1)
 
     // Check balances
     const ethBalance = await ethers.provider.getBalance(signer.address);
-    const usdtBalance = await usdt.balanceOf(signer.address);
+    const musdBalance = await musd.balanceOf(signer.address);
     const mngnBalance = await mngn.balanceOf(signer.address);
 
     console.log("\n💰 Your balances:");
     console.log("  ETH:", ethers.utils.formatEther(ethBalance));
-    console.log("  USDT:", ethers.utils.formatUnits(usdtBalance, 6));
+    console.log("  mUSD:", ethers.utils.formatUnits(musdBalance, 6));
     console.log("  mNGN:", ethers.utils.formatUnits(mngnBalance, 18));
 
     if (ethBalance.lt(executionFee)) {
         console.log("❌ Insufficient ETH");
         return;
     }
-    if (usdtBalance.lt(usdtAmount)) {
-        console.log("❌ Insufficient USDT");
+    if (musdBalance.lt(musdAmount)) {
+        console.log("❌ Insufficient mUSD");
         return;
     }
     if (mngnBalance.lt(mngnAmount)) {
@@ -71,13 +71,13 @@ async function main() {
     // Step 1: Approve tokens to Router
     console.log("\n📍 STEP 1: Approve Router for tokens");
 
-    const usdtAllowance = await usdt.allowance(signer.address, ROUTER);
-    if (usdtAllowance.lt(usdtAmount)) {
-        const tx = await usdt.approve(ROUTER, usdtAmount);
+    const musdAllowance = await musd.allowance(signer.address, ROUTER);
+    if (musdAllowance.lt(musdAmount)) {
+        const tx = await musd.approve(ROUTER, musdAmount);
         await tx.wait();
-        console.log("  ✅ USDT approved");
+        console.log("  ✅ mUSD approved");
     } else {
-        console.log("  ✅ USDT already approved");
+        console.log("  ✅ mUSD already approved");
     }
 
     const mngnAllowance = await mngn.allowance(signer.address, ROUTER);
@@ -91,21 +91,21 @@ async function main() {
 
     // Step 2: Check and clear vault if needed
     console.log("\n📍 STEP 2: Checking vault...");
-    const vaultUsdtBalance = await usdt.balanceOf(DEPOSIT_VAULT);
+    const vaultMusdBalance = await musd.balanceOf(DEPOSIT_VAULT);
     const vaultMngnBalance = await mngn.balanceOf(DEPOSIT_VAULT);
-    const usdtRecorded = await depositVault.tokenBalances(USDT);
+    const musdRecorded = await depositVault.tokenBalances(mUSD);
     const mngnRecorded = await depositVault.tokenBalances(mNGN);
 
-    console.log("  Vault USDT balance:", ethers.utils.formatUnits(vaultUsdtBalance, 6));
+    console.log("  Vault mUSD balance:", ethers.utils.formatUnits(vaultMusdBalance, 6));
     console.log("  Vault mNGN balance:", ethers.utils.formatUnits(vaultMngnBalance, 18));
-    console.log("  Recorded USDT:", ethers.utils.formatUnits(usdtRecorded, 6));
+    console.log("  Recorded mUSD:", ethers.utils.formatUnits(musdRecorded, 6));
     console.log("  Recorded mNGN:", ethers.utils.formatUnits(mngnRecorded, 18));
 
-    if (vaultUsdtBalance.gt(0) || vaultMngnBalance.gt(0)) {
+    if (vaultMusdBalance.gt(0) || vaultMngnBalance.gt(0)) {
         console.log("  Clearing vault...");
-        if (vaultUsdtBalance.gt(0)) {
+        if (vaultMusdBalance.gt(0)) {
             const tx = await depositVault["transferOut(address,address,uint256,bool)"](
-                USDT, signer.address, vaultUsdtBalance, false
+                mUSD, signer.address, vaultMusdBalance, false
             );
             await tx.wait();
         }
@@ -115,7 +115,7 @@ async function main() {
             );
             await tx.wait();
         }
-        await depositVault.syncTokenBalance(USDT);
+        await depositVault.syncTokenBalance(mUSD);
         await depositVault.syncTokenBalance(mNGN);
         console.log("  ✅ Vault cleared");
     }
@@ -123,26 +123,26 @@ async function main() {
     // Step 3: Build multicall
     console.log("\n📍 STEP 3: Building multicall");
     console.log("  1. sendWnt - Send execution fee");
-    console.log("  2. sendTokens - Send USDT");
+    console.log("  2. sendTokens - Send mUSD");
     console.log("  3. sendTokens - Send mNGN");
-    console.log("  4. createDeposit with YOUR address as receiver");
+    console.log("  4. createDeposit with address(1) as receiver (first deposit)");
 
     const multicallData = [];
 
-    // 1. Send WNT (execution fee) - MUST BE FIRST to avoid reentrancy
+    // 1. Send WNT (execution fee) - MUST BE FIRST
     const sendWntData = exchangeRouter.interface.encodeFunctionData("sendWnt", [
         DEPOSIT_VAULT,
         executionFee
     ]);
     multicallData.push(sendWntData);
 
-    // 2. Send USDT
-    const sendUsdtData = exchangeRouter.interface.encodeFunctionData("sendTokens", [
-        USDT,
+    // 2. Send mUSD
+    const sendMusdData = exchangeRouter.interface.encodeFunctionData("sendTokens", [
+        mUSD,
         DEPOSIT_VAULT,
-        usdtAmount
+        musdAmount
     ]);
-    multicallData.push(sendUsdtData);
+    multicallData.push(sendMusdData);
 
     // 3. Send mNGN
     const sendMngnData = exchangeRouter.interface.encodeFunctionData("sendTokens", [
@@ -152,19 +152,19 @@ async function main() {
     ]);
     multicallData.push(sendMngnData);
 
-    // 4. Create deposit with YOUR address as receiver for NORMAL deposit
+    // 4. Create deposit with address(1) as receiver for first deposit
     const depositParams = {
         addresses: {
-            receiver: signer.address, // YOUR address for normal deposits
+            receiver: "0x0000000000000000000000000000000000000001", // address(1) for first deposit
             callbackContract: ethers.constants.AddressZero,
             uiFeeReceiver: ethers.constants.AddressZero,
             market: MARKET,
-            initialLongToken: USDT,
+            initialLongToken: mUSD,
             initialShortToken: mNGN,
             longTokenSwapPath: [],
             shortTokenSwapPath: []
         },
-        minMarketTokens: 0, // Can set to a minimum expected amount for protection
+        minMarketTokens: 0, // 0 for first deposit
         shouldUnwrapNativeToken: false,
         executionFee: executionFee,
         callbackGasLimit: 0,
@@ -223,7 +223,7 @@ async function main() {
 
                     // Save to file
                     const fs = require("fs");
-                    fs.writeFileSync("latest-normal-deposit-key.txt", depositKey);
+                    fs.writeFileSync("latest-musd-deposit-key.txt", depositKey);
                     break;
                 }
             }
@@ -231,8 +231,8 @@ async function main() {
 
         if (depositKey) {
             console.log("\n🎯 Next steps:");
-            console.log("1. Execute deposit with: npx hardhat run claude/scripts/execute-normal-deposit.js --network arbitrumSepolia");
-            console.log("\n📝 Saved deposit key to: latest-normal-deposit-key.txt");
+            console.log("1. Execute deposit with: npx hardhat run scripts/execute-musd-deposit.js --network arbitrumSepolia");
+            console.log("\n📝 Saved deposit key to: latest-musd-deposit-key.txt");
         }
 
         console.log("\n📊 View on Arbiscan:");

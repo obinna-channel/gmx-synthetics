@@ -2,28 +2,28 @@ const { ethers } = require("hardhat");
 
 async function main() {
     const [signer] = await ethers.getSigners();
-    console.log("=== Creating Deposit for USDT Market ===\n");
+    console.log("=== Creating First Deposit for mNGN/USDT/mNGN Market ===\n");
     console.log("Signer address:", signer.address);
 
     // Contract addresses
     const EXCHANGE_ROUTER = "0x3B33708e9b8242999459EB9b4756C24c846e5936";
     const DEPOSIT_VAULT = "0x8672091de3AF3a02bE48cFB753810A736D9F6379";
     const DATA_STORE = "0xD70154A2e4BEF0485Bb6d90265a4F878A4556111";
-    const MARKET = "0x8E4C5f3296A100d4135187C3181258cb8a223bb1"; // USDT market
+    const MARKET = "0x2926c00ACE0D5915b222E4767D2D67CE960bFd2f"; // Market 4: mNGN/USDT/mNGN
     const USDT = "0x5fE0CA3aF9Cf758D7F4159295Fd1Cd6a05562bb6";
-    const sNGN = "0xd66e60AA5b6982649a116e6944Daec22b15468Ad";
+    const mNGN = "0x2e08218698339AFdba205312cc23dAe8c3690827";
     const ROUTER = "0x6C71eD3bE6D3966F34162Cbda0195a6778096fAc";
 
-    console.log("📍 Using USDT Market:", MARKET);
-    console.log("   Index Token: USDT");
+    console.log("📍 Using Market 4:", MARKET);
+    console.log("   Index Token: mNGN (tracks NGN price)");
     console.log("   Long Token: USDT");
-    console.log("   Short Token: sNGN\n");
+    console.log("   Short Token: mNGN\n");
 
     // Get contracts
     const exchangeRouter = await ethers.getContractAt("ExchangeRouter", EXCHANGE_ROUTER);
     const dataStore = await ethers.getContractAt("DataStore", DATA_STORE);
     const usdt = await ethers.getContractAt("IERC20", USDT);
-    const sngn = await ethers.getContractAt("IERC20", sNGN);
+    const mngn = await ethers.getContractAt("IERC20", mNGN);
     const depositVault = await ethers.getContractAt("DepositVault", DEPOSIT_VAULT);
 
     // Get WNT (Wrapped Native Token) address
@@ -36,23 +36,23 @@ async function main() {
 
     // Deposit amounts - balanced 1:1 in USD value
     const usdtAmount = ethers.utils.parseUnits("1000", 6); // 1000 USDT
-    const sngnAmount = ethers.utils.parseUnits("1500000", 18); // 1,500,000 sNGN (worth $1000 at $1/1500 rate)
+    const mngnAmount = ethers.utils.parseUnits("1500000", 18); // 1,500,000 mNGN (worth $1000 at $1/1500 rate)
     const executionFee = ethers.utils.parseEther("0.001"); // 0.001 ETH
 
     console.log("\n📊 Deposit Configuration:");
     console.log("  USDT amount:", ethers.utils.formatUnits(usdtAmount, 6));
-    console.log("  sNGN amount:", ethers.utils.formatUnits(sngnAmount, 18));
+    console.log("  mNGN amount:", ethers.utils.formatUnits(mngnAmount, 18));
     console.log("  Execution fee:", ethers.utils.formatEther(executionFee), "ETH");
 
     // Check balances
     const ethBalance = await ethers.provider.getBalance(signer.address);
     const usdtBalance = await usdt.balanceOf(signer.address);
-    const sngnBalance = await sngn.balanceOf(signer.address);
+    const mngnBalance = await mngn.balanceOf(signer.address);
 
     console.log("\n💰 Your balances:");
     console.log("  ETH:", ethers.utils.formatEther(ethBalance));
     console.log("  USDT:", ethers.utils.formatUnits(usdtBalance, 6));
-    console.log("  sNGN:", ethers.utils.formatUnits(sngnBalance, 18));
+    console.log("  mNGN:", ethers.utils.formatUnits(mngnBalance, 18));
 
     if (ethBalance.lt(executionFee)) {
         console.log("❌ Insufficient ETH");
@@ -62,8 +62,8 @@ async function main() {
         console.log("❌ Insufficient USDT");
         return;
     }
-    if (sngnBalance.lt(sngnAmount)) {
-        console.log("❌ Insufficient sNGN");
+    if (mngnBalance.lt(mngnAmount)) {
+        console.log("❌ Insufficient mNGN");
         return;
     }
 
@@ -79,28 +79,28 @@ async function main() {
         console.log("  ✅ USDT already approved");
     }
 
-    const sngnAllowance = await sngn.allowance(signer.address, ROUTER);
-    if (sngnAllowance.lt(sngnAmount)) {
-        const tx = await sngn.approve(ROUTER, sngnAmount);
+    const mngnAllowance = await mngn.allowance(signer.address, ROUTER);
+    if (mngnAllowance.lt(mngnAmount)) {
+        const tx = await mngn.approve(ROUTER, mngnAmount);
         await tx.wait();
-        console.log("  ✅ sNGN approved");
+        console.log("  ✅ mNGN approved");
     } else {
-        console.log("  ✅ sNGN already approved");
+        console.log("  ✅ mNGN already approved");
     }
 
     // Step 2: Check and clear vault if needed
     console.log("\n📍 STEP 2: Checking vault...");
     const vaultUsdtBalance = await usdt.balanceOf(DEPOSIT_VAULT);
-    const vaultSngnBalance = await sngn.balanceOf(DEPOSIT_VAULT);
+    const vaultMngnBalance = await mngn.balanceOf(DEPOSIT_VAULT);
     const usdtRecorded = await depositVault.tokenBalances(USDT);
-    const sngnRecorded = await depositVault.tokenBalances(sNGN);
+    const mngnRecorded = await depositVault.tokenBalances(mNGN);
 
     console.log("  Vault USDT balance:", ethers.utils.formatUnits(vaultUsdtBalance, 6));
-    console.log("  Vault sNGN balance:", ethers.utils.formatUnits(vaultSngnBalance, 18));
+    console.log("  Vault mNGN balance:", ethers.utils.formatUnits(vaultMngnBalance, 18));
     console.log("  Recorded USDT:", ethers.utils.formatUnits(usdtRecorded, 6));
-    console.log("  Recorded sNGN:", ethers.utils.formatUnits(sngnRecorded, 18));
+    console.log("  Recorded mNGN:", ethers.utils.formatUnits(mngnRecorded, 18));
 
-    if (vaultUsdtBalance.gt(0) || vaultSngnBalance.gt(0)) {
+    if (vaultUsdtBalance.gt(0) || vaultMngnBalance.gt(0)) {
         console.log("  Clearing vault...");
         if (vaultUsdtBalance.gt(0)) {
             const tx = await depositVault["transferOut(address,address,uint256,bool)"](
@@ -108,14 +108,14 @@ async function main() {
             );
             await tx.wait();
         }
-        if (vaultSngnBalance.gt(0)) {
+        if (vaultMngnBalance.gt(0)) {
             const tx = await depositVault["transferOut(address,address,uint256,bool)"](
-                sNGN, signer.address, vaultSngnBalance, false
+                mNGN, signer.address, vaultMngnBalance, false
             );
             await tx.wait();
         }
         await depositVault.syncTokenBalance(USDT);
-        await depositVault.syncTokenBalance(sNGN);
+        await depositVault.syncTokenBalance(mNGN);
         console.log("  ✅ Vault cleared");
     }
 
@@ -123,7 +123,7 @@ async function main() {
     console.log("\n📍 STEP 3: Building multicall");
     console.log("  1. sendWnt - Send execution fee");
     console.log("  2. sendTokens - Send USDT");
-    console.log("  3. sendTokens - Send sNGN");
+    console.log("  3. sendTokens - Send mNGN");
     console.log("  4. createDeposit");
 
     const multicallData = [];
@@ -143,13 +143,13 @@ async function main() {
     ]);
     multicallData.push(sendUsdtData);
 
-    // 3. Send sNGN
-    const sendSngnData = exchangeRouter.interface.encodeFunctionData("sendTokens", [
-        sNGN,
+    // 3. Send mNGN
+    const sendMngnData = exchangeRouter.interface.encodeFunctionData("sendTokens", [
+        mNGN,
         DEPOSIT_VAULT,
-        sngnAmount
+        mngnAmount
     ]);
-    multicallData.push(sendSngnData);
+    multicallData.push(sendMngnData);
 
     // 4. Create deposit with address(1) as receiver for first deposit
     const depositParams = {
@@ -159,7 +159,7 @@ async function main() {
             uiFeeReceiver: ethers.constants.AddressZero,
             market: MARKET, // NEW USDT-indexed market
             initialLongToken: USDT,
-            initialShortToken: sNGN,
+            initialShortToken: mNGN,
             longTokenSwapPath: [],
             shortTokenSwapPath: []
         },

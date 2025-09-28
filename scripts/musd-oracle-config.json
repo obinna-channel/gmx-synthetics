@@ -1,0 +1,13 @@
+{
+  "mUSD": "0x85bf04B07A6df0172372b959C1C73F3e90F73faf",
+  "mNGN": "0x2e08218698339AFdba205312cc23dAe8c3690827",
+  "mockProvider": "0x5D85d4acd35ffD0daD76C5eB0da3d7e53e20cCC5",
+  "musdPrice": "1500000000000000000000000000",
+  "mngnPrice": "1000000000000",
+  "musdProviderKey": "0xe5750e9cab88e939cc978307f44e901a814b7c9b0329b6d10f4f809284f4bd85",
+  "exchangeRate": "1 mUSD = 1500 mNGN",
+  "pricingModel": "NGN-based (exchange rate)",
+  "configuredAt": "2025-09-27T16:56:26.974Z",
+  "network": "arbitrumSepolia",
+  "market": "0xf7F4Bb2014A164A919Ccec2b97Bd4805f86B83aD"
+}
