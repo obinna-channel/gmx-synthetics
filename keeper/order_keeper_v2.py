@@ -63,19 +63,25 @@ class OrderKeeper:
         self.DATA_STORE = "0xD70154A2e4BEF0485Bb6d90265a4F878A4556111"
         self.ORDER_HANDLER = "0x83f2D66af7f794893C31c0B32BD2D4cE826871d7"
 
-        # Token addresses (Updated for mUSD/mNGN market)
-        self.USDT = "0x85bf04B07A6df0172372b959C1C73F3e90F73faf"  # mUSD
-        self.sNGN = "0x2e08218698339AFdba205312cc23dAe8c3690827"  # mNGN
+        # Token addresses (Updated for mUSDTNGN/mUSD/mNGN market)
+        self.mUSD = "0x85bf04B07A6df0172372b959C1C73F3e90F73faf"  # mUSD (long token)
+        self.mNGN = "0x2e08218698339AFdba205312cc23dAe8c3690827"  # mNGN (short token)
+        self.mUSDTNGN = "0x168e829F546940AE7Ab336aF4Bd95d07f7f6cE73"  # mUSDTNGN (index token)
 
         # MockOracleProvider address (will be loaded from file if exists)
         self.MOCK_PROVIDER = self.load_mock_provider_address()
 
-        # Price configuration (Exchange Rate Pricing for mUSD/mNGN)
-        # mUSD: 1500 NGN (with 30 decimals precision and 6 token decimals)
-        # mNGN: 1 NGN (with 30 decimals precision and 18 token decimals)
+        # Price configuration (USD-based pricing for Market #9)
+        # Exchange rate - single variable to control pricing
+        self.EXCHANGE_RATE = 1500  # 1 USD = 1500 NGN
+
+        # mUSDTNGN: The exchange rate itself
+        # mUSD: Always 1 USD
+        # mNGN: Calculated as 1/EXCHANGE_RATE USD
         self.PRICES = {
-            self.USDT: 1500 * 10**24,    # 1500 NGN per mUSD (1500 * 10^(30-6))
-            self.sNGN: 10**12,            # 1 NGN per mNGN (10^(30-18))
+            self.mUSDTNGN: self.EXCHANGE_RATE * 10**12,     # Exchange rate with precision 30-18=12
+            self.mUSD: 1 * 10**24,                          # 1 USD with precision 30-6=24
+            self.mNGN: int((1 / self.EXCHANGE_RATE) * 10**12),  # 1/rate USD with precision 30-18=12
         }
 
         # Event signatures
@@ -401,15 +407,19 @@ class OrderKeeper:
                 receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
 
                 if receipt.status == 1:
-                    token_name = 'mUSD' if token_address.lower() == self.USDT.lower() else \
-                                 'mNGN' if token_address.lower() == self.sNGN.lower() else 'WETH'
-                    # Display price in human-readable format (NGN terms)
+                    token_name = 'mUSD' if token_address.lower() == self.mUSD.lower() else \
+                                 'mNGN' if token_address.lower() == self.mNGN.lower() else \
+                                 'mUSDTNGN' if token_address.lower() == self.mUSDTNGN.lower() else 'Unknown'
+                    # Display price in human-readable format (USD terms)
                     if token_name == 'mUSD':
-                        ngn_value = price / (10**24)  # Convert to NGN
-                        print(f"  ✅ {token_name} price updated: {ngn_value:.0f} NGN")
+                        usd_value = price / (10**24)  # Convert to USD
+                        print(f"  ✅ {token_name} price updated: {usd_value:.2f} USD")
                     elif token_name == 'mNGN':
-                        ngn_value = price / (10**12)  # Convert to NGN
-                        print(f"  ✅ {token_name} price updated: {ngn_value:.0f} NGN")
+                        usd_value = price / (10**12)  # Convert to USD
+                        print(f"  ✅ {token_name} price updated: {usd_value:.9f} USD")
+                    elif token_name == 'mUSDTNGN':
+                        rate_value = price / (10**12)  # Convert to exchange rate
+                        print(f"  ✅ {token_name} price updated: {rate_value:.0f} (USDT/NGN rate)")
                     else:
                         print(f"  ✅ {token_name} price updated: {price}")
                 else:
@@ -428,11 +438,12 @@ class OrderKeeper:
         # Get unique tokens involved
         tokens = []
 
-        # Always include market tokens (mUSD and mNGN for the market)
-        tokens.append(self.USDT)  # mUSD
-        tokens.append(self.sNGN)  # mNGN
+        # Always include market tokens for Market #9
+        tokens.append(self.mUSDTNGN)  # Index token
+        tokens.append(self.mUSD)      # Long token
+        tokens.append(self.mNGN)      # Short token
 
-        # Add collateral token if different
+        # Add collateral token if different and not already in list
         collateral_token = order.get('initialCollateralToken')
         if collateral_token and collateral_token not in tokens:
             tokens.append(collateral_token)
