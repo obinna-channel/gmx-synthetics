@@ -383,18 +383,24 @@ class OrderKeeper:
         print("\n📊 Updating MockOracleProvider prices...")
 
         try:
-            for token_address, price in self.PRICES.items():
-                # Build transaction
-                # Get current gas price and add buffer
-                current_gas_price = self.w3.eth.gas_price
-                gas_price_with_buffer = int(current_gas_price * 1.2)  # 20% buffer
+            # Get initial nonce once for all transactions
+            nonce = self.w3.eth.get_transaction_count(self.account.address)
 
+            # Get current gas price once
+            current_gas_price = self.w3.eth.gas_price
+            gas_price_with_buffer = int(current_gas_price * 1.2)  # 20% buffer
+
+            # Track all transactions
+            transactions = []
+
+            for token_address, price in self.PRICES.items():
+                # Build transaction with sequential nonce
                 tx = self.mock_provider.functions.setPriceWithPrecision(
                     Web3.to_checksum_address(token_address),
                     price
                 ).build_transaction({
                     'from': self.account.address,
-                    'nonce': self.w3.eth.get_transaction_count(self.account.address),
+                    'nonce': nonce,  # Use tracked nonce
                     'gas': 100000,
                     'gasPrice': gas_price_with_buffer
                 })
@@ -403,27 +409,39 @@ class OrderKeeper:
                 signed_tx = self.account.sign_transaction(tx)
                 tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
 
-                # Wait for confirmation
-                receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+                # Store transaction info
+                token_name = 'mUSD' if token_address.lower() == self.mUSD.lower() else \
+                             'mNGN' if token_address.lower() == self.mNGN.lower() else \
+                             'mUSDTNGN' if token_address.lower() == self.mUSDTNGN.lower() else 'Unknown'
+                transactions.append((tx_hash, token_name, price, token_address))
 
-                if receipt.status == 1:
-                    token_name = 'mUSD' if token_address.lower() == self.mUSD.lower() else \
-                                 'mNGN' if token_address.lower() == self.mNGN.lower() else \
-                                 'mUSDTNGN' if token_address.lower() == self.mUSDTNGN.lower() else 'Unknown'
-                    # Display price in human-readable format (USD terms)
-                    if token_name == 'mUSD':
-                        usd_value = price / (10**24)  # Convert to USD
-                        print(f"  ✅ {token_name} price updated: {usd_value:.2f} USD")
-                    elif token_name == 'mNGN':
-                        usd_value = price / (10**12)  # Convert to USD
-                        print(f"  ✅ {token_name} price updated: {usd_value:.9f} USD")
-                    elif token_name == 'mUSDTNGN':
-                        rate_value = price / (10**12)  # Convert to exchange rate
-                        print(f"  ✅ {token_name} price updated: {rate_value:.0f} (USDT/NGN rate)")
+                # Increment nonce for next transaction
+                nonce += 1
+
+            # Now wait for all confirmations
+            for tx_hash, token_name, price, token_address in transactions:
+                try:
+                    receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=30)
+
+                    if receipt.status == 1:
+                        # Display price in human-readable format (USD terms)
+                        if token_name == 'mUSD':
+                            usd_value = price / (10**24)  # Convert to USD
+                            print(f"  ✅ {token_name} price updated: {usd_value:.2f} USD")
+                        elif token_name == 'mNGN':
+                            usd_value = price / (10**12)  # Convert to USD
+                            print(f"  ✅ {token_name} price updated: {usd_value:.9f} USD")
+                        elif token_name == 'mUSDTNGN':
+                            rate_value = price / (10**12)  # Convert to exchange rate
+                            print(f"  ✅ {token_name} price updated: {rate_value:.0f} (USDT/NGN rate)")
+                        else:
+                            print(f"  ✅ {token_name} price updated: {price}")
                     else:
-                        print(f"  ✅ {token_name} price updated: {price}")
-                else:
-                    print(f"  ❌ Failed to update price for {token_address}")
+                        print(f"  ❌ Failed to update price for {token_address}")
+                        return False
+
+                except Exception as e:
+                    print(f"  ❌ Error waiting for price update confirmation for {token_name}: {e}")
                     return False
 
             return True
