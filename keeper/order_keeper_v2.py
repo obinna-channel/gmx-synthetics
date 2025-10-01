@@ -14,6 +14,8 @@ from datetime import datetime
 import os
 from dotenv import load_dotenv
 from enum import Enum
+import socketio
+import aiohttp
 
 # Load environment variables
 load_dotenv()
@@ -29,6 +31,162 @@ class OrderType(Enum):
     StopLossDecrease = 6
     Liquidation = 7
     StopIncrease = 8
+
+class PriceFeedManager:
+    """Manages Socket.IO connection to Marks price feed server"""
+
+    def __init__(self, socket_url, pairs_to_watch):
+        self.socket_url = socket_url
+        self.pairs_to_watch = pairs_to_watch
+        self.price_cache = {}  # pair -> {'price': float, 'timestamp': str, 'data': dict}
+        self.is_connected = False
+
+        # Create async Socket.IO client
+        self.sio = socketio.AsyncClient(
+            reconnection=True,
+            reconnection_attempts=5,
+            reconnection_delay=2,
+            logger=False,
+            engineio_logger=False,
+            ssl_verify=False
+        )
+
+        # Register event handlers
+        self.sio.on('connect', self.on_connect)
+        self.sio.on('disconnect', self.on_disconnect)
+        self.sio.on('price_update', self.on_price_update)
+        self.sio.on('connect_error', self.on_connect_error)
+
+    async def on_connect(self):
+        """Called when connected to price feed server"""
+        print(f"\n✅ Price Feed Connected")
+        print(f"   Socket ID: {self.sio.sid}")
+        self.is_connected = True
+
+        # Subscribe to all pairs
+        await self.subscribe_to_pairs()
+
+    async def on_disconnect(self):
+        """Called when disconnected from server"""
+        print(f"\n⚠️  Price Feed Disconnected")
+        self.is_connected = False
+
+    async def on_connect_error(self, data):
+        """Called when connection error occurs"""
+        print(f"\n❌ Price Feed Connection Error: {data}")
+
+    async def on_price_update(self, data):
+        """Called when price update is received"""
+        pair = data.get('pair')
+        price_data = data.get('data', {})
+        timestamp = data.get('timestamp')
+
+        if pair:
+            # Update cache
+            self.price_cache[pair] = {
+                'price': price_data.get('price'),
+                'timestamp': timestamp,
+                'data': price_data
+            }
+
+            print(f"\n💰 Price Update: {pair} = {price_data.get('price')}")
+
+            # Trigger conditional order check with new price
+            if hasattr(self, 'price_update_event'):
+                self.price_update_event.set()
+
+    async def fetch_initial_price(self, pair):
+        """Fetch current price via HTTP API"""
+        # Construct API URL from socket URL
+        base_url = self.socket_url.rstrip('/')
+        api_url = f"{base_url}/api/v1/price/current/{pair}"
+
+        try:
+            # Create SSL context that doesn't verify certificates (for Heroku)
+            connector = aiohttp.TCPConnector(ssl=False)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.get(api_url, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data
+                    else:
+                        print(f"   ⚠️  HTTP {response.status} fetching price for {pair}")
+                        return None
+        except Exception as e:
+            print(f"   ⚠️  Error fetching initial price for {pair}: {e}")
+            return None
+
+    async def subscribe_to_pairs(self):
+        """Subscribe to all pairs in watch list and fetch initial prices"""
+        print(f"\n📡 Subscribing to price feeds...")
+
+        for pair in self.pairs_to_watch:
+            try:
+                # Subscribe to Socket.IO updates
+                response = await self.sio.call('subscribe', {'pair': pair}, timeout=10)
+                print(f"   ✅ Subscribed to {pair}")
+
+                # Fetch current price via HTTP API
+                price_data = await self.fetch_initial_price(pair)
+
+                if price_data and 'price' in price_data:
+                    # Cache the initial price
+                    self.price_cache[pair] = {
+                        'price': price_data['price'],
+                        'timestamp': price_data.get('timestamp'),
+                        'data': price_data
+                    }
+                    print(f"   💰 Initial price: {price_data['price']}")
+                else:
+                    print(f"   ⚠️  Could not fetch initial price for {pair}")
+
+            except Exception as e:
+                print(f"   ❌ Failed to subscribe to {pair}: {e}")
+
+        # Final check - if still no prices, wait for first Socket.IO update
+        if not self.price_cache:
+            print(f"\n⏳ Waiting for first Socket.IO price update...")
+            max_wait = 10  # Wait up to 10 seconds
+            waited = 0
+            while not self.price_cache and waited < max_wait:
+                await asyncio.sleep(0.5)
+                waited += 0.5
+
+            if self.price_cache:
+                print(f"   ✅ Received price update")
+            else:
+                print(f"   ⚠️  No price data received, will use fallback (1500) until first update")
+
+    async def connect(self):
+        """Connect to the Socket.IO server"""
+        print(f"\n🔌 Connecting to price feed: {self.socket_url}")
+
+        try:
+            await self.sio.connect(
+                self.socket_url,
+                transports=['websocket'],
+                wait_timeout=10,
+                socketio_path='/socket.io',
+                headers={'Origin': 'http://localhost:3000'}
+            )
+        except Exception as e:
+            print(f"❌ Failed to connect to price feed: {e}")
+            raise
+
+    async def disconnect(self):
+        """Disconnect from server"""
+        if self.sio.connected:
+            await self.sio.disconnect()
+
+    def get_price(self, pair):
+        """Get current price for a pair"""
+        if pair in self.price_cache:
+            return self.price_cache[pair]['price']
+        return None
+
+    def get_price_data(self, pair):
+        """Get full price data for a pair"""
+        return self.price_cache.get(pair)
 
 class OrderKeeper:
     def __init__(self):
@@ -71,18 +229,25 @@ class OrderKeeper:
         # MockOracleProvider address (will be loaded from file if exists)
         self.MOCK_PROVIDER = self.load_mock_provider_address()
 
-        # Price configuration (USD-based pricing for Market #9)
-        # Exchange rate - single variable to control pricing
-        self.EXCHANGE_RATE = 1500  # 1 USD = 1500 NGN
-
-        # mUSDTNGN: The exchange rate itself
-        # mUSD: Always 1 USD
-        # mNGN: Calculated as 1/EXCHANGE_RATE USD
-        self.PRICES = {
-            self.mUSDTNGN: self.EXCHANGE_RATE * 10**12,     # Exchange rate with precision 30-18=12
-            self.mUSD: 1 * 10**24,                          # 1 USD with precision 30-6=24
-            self.mNGN: int((1 / self.EXCHANGE_RATE) * 10**12),  # 1/rate USD with precision 30-18=12
+        # Price Feed Configuration
+        self.PRICE_FEED_URL = "https://marks-server-a58cc19eb539.herokuapp.com/"
+        self.MARKET_PAIR_MAPPING = {
+            self.mUSDTNGN: "USDTNGN"  # Market address -> Price feed pair
         }
+
+        # Initialize price feed manager
+        pairs_to_watch = list(set(self.MARKET_PAIR_MAPPING.values()))  # Unique pairs
+        self.price_feed = PriceFeedManager(self.PRICE_FEED_URL, pairs_to_watch)
+
+        # Event to signal when a price update arrives (for conditional order monitoring)
+        self.price_update_event = asyncio.Event()
+
+        # Give price feed manager access to the event
+        self.price_feed.price_update_event = self.price_update_event
+
+        # Price configuration - will be updated dynamically from price feed
+        # Fallback to 1500 if no price data available yet
+        self.EXCHANGE_RATE = 1500  # Fallback rate
 
         # Event signatures
         self.EVENT_LOG2_SIGNATURE = "0x468a25a7ba624ceea6e540ad6f49171b52495b648417ae91bca21676d8a24dc5"
@@ -216,6 +381,35 @@ class OrderKeeper:
         # Using the deployed address directly
         return "0x5D85d4acd35ffD0daD76C5eB0da3d7e53e20cCC5"
 
+    def get_current_prices(self):
+        """
+        Get current prices for all tokens based on live price feed
+        Returns dict of token_address -> price (with proper precision)
+        """
+        # Get the pair for this market
+        pair = self.MARKET_PAIR_MAPPING.get(self.mUSDTNGN, "USDTNGN")
+
+        # Get current price from feed
+        current_price = self.price_feed.get_price(pair)
+
+        if current_price:
+            # Use live price
+            exchange_rate = current_price
+            print(f"   Using live price: {exchange_rate} {pair}")
+        else:
+            # Fallback to stored rate
+            exchange_rate = self.EXCHANGE_RATE
+            print(f"   ⚠️  No live price, using fallback: {exchange_rate}")
+
+        # Calculate token prices
+        prices = {
+            self.mUSDTNGN: int(exchange_rate * 10**12),     # Exchange rate with precision 30-18=12
+            self.mUSD: 1 * 10**24,                          # 1 USD with precision 30-6=24
+            self.mNGN: int((1 / exchange_rate) * 10**12),   # 1/rate USD with precision 30-18=12
+        }
+
+        return prices
+
     def generate_order_data_key(self, order_key, field):
         """Generate the storage key for order data in DataStore"""
         # First, get the field constant hash: keccak256(abi.encode(FIELD_NAME))
@@ -227,7 +421,7 @@ class OrderKeeper:
         return storage_key
 
     async def fetch_order_details(self, order_key):
-        """Fetch complete order details from DataStore"""
+        """Fetch complete order details from DataStore (parallelized for speed)"""
 
         print(f"\n📄 Fetching order details for: {order_key}")
 
@@ -257,19 +451,42 @@ class OrderKeeper:
                 'IS_FROZEN': ('isFrozen', 'getBool')
             }
 
-            for constant_name, (field_name, method_name) in fields.items():
+            # Fetch all fields in parallel
+            async def fetch_field(constant_name, field_name, method_name):
+                """Fetch a single field value"""
                 storage_key = self.generate_order_data_key(order_key, constant_name)
 
-                # Call the appropriate getter method
+                # Call the appropriate getter method in executor (non-blocking)
                 if method_name == 'getAddress':
-                    value = self.datastore.functions.getAddress(storage_key).call()
+                    value = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: self.datastore.functions.getAddress(storage_key).call()
+                    )
                 elif method_name == 'getUint':
-                    value = self.datastore.functions.getUint(storage_key).call()
+                    value = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: self.datastore.functions.getUint(storage_key).call()
+                    )
                 elif method_name == 'getBool':
-                    value = self.datastore.functions.getBool(storage_key).call()
+                    value = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: self.datastore.functions.getBool(storage_key).call()
+                    )
                 else:
                     value = None
 
+                return field_name, value
+
+            # Execute all fetches in parallel
+            fetch_tasks = [
+                fetch_field(constant_name, field_name, method_name)
+                for constant_name, (field_name, method_name) in fields.items()
+            ]
+
+            results = await asyncio.gather(*fetch_tasks)
+
+            # Build order dict from results
+            for field_name, value in results:
                 order[field_name] = value
 
             # Convert order type to enum
@@ -292,52 +509,9 @@ class OrderKeeper:
             print(f"     Trigger Price: {order['triggerPrice'] / 10**30:.4f}" if order['triggerPrice'] > 0 else "     Trigger Price: N/A (Market Order)")
             print(f"     Is Frozen: {order['isFrozen']}")
 
-            # For decrease orders, check the current position
-            if order['orderTypeName'] == 'MarketDecrease':
-                print(f"\n     📍 Checking position before decrease:")
-                position_key = Web3.keccak(
-                    encode(
-                        ['address', 'address', 'address', 'bool'],
-                        [
-                            Web3.to_checksum_address(order['account']),
-                            Web3.to_checksum_address(order['market']),
-                            Web3.to_checksum_address(order['initialCollateralToken']),
-                            order['isLong']
-                        ]
-                    )
-                )
-
-                # Check if position exists
-                POSITION_LIST = Web3.keccak(encode(['string'], ['POSITION_LIST']))
-                position_exists = self.datastore.functions.containsBytes32(POSITION_LIST, position_key).call()
-
-                if position_exists:
-                    # Get position size
-                    size_key = Web3.keccak(
-                        encode(['bytes32', 'bytes32'], [
-                            position_key,
-                            Web3.keccak(encode(['string'], ['SIZE_IN_USD']))
-                        ])
-                    )
-                    position_size = self.datastore.functions.getUint(size_key).call()
-
-                    # Get collateral amount
-                    collateral_key = Web3.keccak(
-                        encode(['bytes32', 'bytes32'], [
-                            position_key,
-                            Web3.keccak(encode(['string'], ['COLLATERAL_AMOUNT']))
-                        ])
-                    )
-                    collateral_amount = self.datastore.functions.getUint(collateral_key).call()
-
-                    print(f"     Position Size: {position_size / 10**30:.2f} USD")
-                    print(f"     Position Collateral: {collateral_amount / 10**6:.4f} mUSD")
-                    print(f"     Attempting to decrease: {order['sizeDeltaUsd'] / 10**30:.2f} USD")
-
-                    if position_size < order['sizeDeltaUsd']:
-                        print(f"     ⚠️ WARNING: Trying to decrease more than position size!")
-                else:
-                    print(f"     ❌ No position found to decrease!")
+            # OPTIMIZATION: Position validation removed for speed
+            # The contract will validate position on execution
+            # Saves ~300ms per MarketDecrease order
 
             return order
 
@@ -374,13 +548,83 @@ class OrderKeeper:
         else:
             return 'UNKNOWN'
 
+    def check_trigger_condition(self, order, current_price):
+        """
+        Check if a conditional order's trigger condition is met
+
+        Returns: True if order should execute, False otherwise
+        """
+        if current_price is None:
+            return False
+
+        order_type = order.get('orderType')
+        trigger_price = order.get('triggerPrice', 0)
+        is_long = order.get('isLong', False)
+
+        if trigger_price == 0:
+            return False
+
+        # Convert prices to same precision for comparison
+        trigger_price_float = trigger_price / 10**30
+        current_price_float = current_price
+
+        # Limit Increase: Enter position when price is favorable
+        if order_type == OrderType.LimitIncrease.value:
+            if is_long:
+                # Long: Execute when price drops to or below trigger (buy the dip)
+                return current_price_float <= trigger_price_float
+            else:
+                # Short: Execute when price rises to or above trigger (short the top)
+                return current_price_float >= trigger_price_float
+
+        # Limit Decrease (Take Profit): Close position when price target hit
+        elif order_type == OrderType.LimitDecrease.value:
+            if is_long:
+                # Long TP: Execute when price rises to or above trigger (take profits)
+                return current_price_float >= trigger_price_float
+            else:
+                # Short TP: Execute when price drops to or below trigger (take profits)
+                return current_price_float <= trigger_price_float
+
+        # Stop Loss Decrease: Close position to limit losses
+        elif order_type == OrderType.StopLossDecrease.value:
+            if is_long:
+                # Long SL: Execute when price drops to or below trigger (stop losses)
+                return current_price_float <= trigger_price_float
+            else:
+                # Short SL: Execute when price rises to or above trigger (stop losses)
+                return current_price_float >= trigger_price_float
+
+        # Stop Increase: Enter position when momentum confirms (breakout strategy)
+        elif order_type == OrderType.StopIncrease.value:
+            if is_long:
+                # Long: Execute when price rises to or above trigger (buy breakout)
+                return current_price_float >= trigger_price_float
+            else:
+                # Short: Execute when price drops to or below trigger (short breakdown)
+                return current_price_float <= trigger_price_float
+
+        # Limit Swap: Token swap at favorable price
+        elif order_type == OrderType.LimitSwap.value:
+            # Swap when price hits target (direction depends on swap type)
+            # For now, use same logic as limit increase
+            if is_long:
+                return current_price_float <= trigger_price_float
+            else:
+                return current_price_float >= trigger_price_float
+
+        return False
+
     async def update_mock_provider_prices(self):
-        """Update prices on MockOracleProvider"""
+        """Update prices on MockOracleProvider using live price feed data"""
         if not self.mock_provider:
             print("  ⚠️  MockProvider not configured, skipping price update")
             return False
 
         print("\n📊 Updating MockOracleProvider prices...")
+
+        # Get current prices from live feed
+        prices = self.get_current_prices()
 
         try:
             # Get initial nonce once for all transactions
@@ -393,7 +637,7 @@ class OrderKeeper:
             # Track all transactions
             transactions = []
 
-            for token_address, price in self.PRICES.items():
+            for token_address, price in prices.items():
                 # Build transaction with sequential nonce
                 tx = self.mock_provider.functions.setPriceWithPrecision(
                     Web3.to_checksum_address(token_address),
@@ -418,10 +662,15 @@ class OrderKeeper:
                 # Increment nonce for next transaction
                 nonce += 1
 
-            # Now wait for all confirmations
-            for tx_hash, token_name, price, token_address in transactions:
+            # Now wait for all confirmations IN PARALLEL
+            async def wait_for_receipt(tx_hash, token_name, price, token_address):
+                """Wait for a single transaction receipt"""
                 try:
-                    receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=30)
+                    # Use asyncio to run the blocking call in executor
+                    receipt = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=30)
+                    )
 
                     if receipt.status == 1:
                         # Display price in human-readable format (USD terms)
@@ -436,6 +685,7 @@ class OrderKeeper:
                             print(f"  ✅ {token_name} price updated: {rate_value:.0f} (USDT/NGN rate)")
                         else:
                             print(f"  ✅ {token_name} price updated: {price}")
+                        return True
                     else:
                         print(f"  ❌ Failed to update price for {token_address}")
                         return False
@@ -443,6 +693,16 @@ class OrderKeeper:
                 except Exception as e:
                     print(f"  ❌ Error waiting for price update confirmation for {token_name}: {e}")
                     return False
+
+            # Wait for all receipts in parallel
+            results = await asyncio.gather(*[
+                wait_for_receipt(tx_hash, token_name, price, token_address)
+                for tx_hash, token_name, price, token_address in transactions
+            ])
+
+            # Check if all succeeded
+            if not all(results):
+                return False
 
             return True
 
@@ -599,6 +859,64 @@ class OrderKeeper:
         # Process orders one by one (could be parallelized in production)
         for order_key, order in list(self.market_orders.items()):
             await self.execute_order(order_key, order)
+
+    async def monitor_conditional_orders(self):
+        """
+        Monitor conditional orders and execute when triggers are met
+        Triggered by price update events (event-driven, not polling)
+        """
+        print("\n🔍 Starting conditional order monitor (event-driven)...")
+
+        while True:
+            try:
+                # Wait for a price update event
+                await self.price_update_event.wait()
+
+                # Clear the event for next update
+                self.price_update_event.clear()
+
+                # Skip if no conditional orders to check
+                if not self.conditional_orders:
+                    continue
+
+                # Get current price for the market
+                pair = self.MARKET_PAIR_MAPPING.get(self.mUSDTNGN, "USDTNGN")
+                current_price = self.price_feed.get_price(pair)
+
+                if current_price is None:
+                    # No price data yet, skip
+                    continue
+
+                # Check each conditional order
+                orders_to_execute = []
+
+                for order_key, order in list(self.conditional_orders.items()):
+                    # Check if trigger condition is met
+                    if self.check_trigger_condition(order, current_price):
+                        orders_to_execute.append((order_key, order))
+
+                # Execute triggered orders
+                for order_key, order in orders_to_execute:
+                    print(f"\n🎯 Conditional order triggered!")
+                    print(f"   Order Key: {order_key}")
+                    print(f"   Type: {order['orderTypeName']}")
+                    print(f"   Trigger Price: {order['triggerPrice'] / 10**30:.4f}")
+                    print(f"   Current Price: {current_price:.4f}")
+
+                    # Remove from conditional orders
+                    if order_key in self.conditional_orders:
+                        del self.conditional_orders[order_key]
+
+                    # Execute the order
+                    await self.execute_order(order_key, order)
+
+            except asyncio.CancelledError:
+                # Task was cancelled (shutdown)
+                print("\n🛑 Conditional order monitor stopped")
+                break
+            except Exception as e:
+                print(f"\n❌ Error in conditional order monitor: {e}")
+                await asyncio.sleep(2)  # Brief pause before continuing
 
     async def handle_order_created(self, event_data):
         """Process OrderCreated event - fetch details and classify"""
@@ -793,11 +1111,27 @@ class OrderKeeper:
         print("       ORDER KEEPER V2 - WITH EXECUTION")
         print("=" * 60)
 
+        # Connect to price feed first
+        try:
+            await self.price_feed.connect()
+        except Exception as e:
+            print(f"❌ Failed to connect to price feed: {e}")
+            print("   Continuing without live prices (using fallback)")
+
+        # Start conditional order monitor as background task
+        monitor_task = asyncio.create_task(self.monitor_conditional_orders())
+
+        # Run blockchain listener
         while True:
             try:
+                # Main blockchain event listener
                 await self.connect_and_subscribe()
             except KeyboardInterrupt:
                 print("\n👋 Shutting down...")
+                # Cancel monitor task
+                monitor_task.cancel()
+                # Disconnect price feed
+                await self.price_feed.disconnect()
                 break
             except Exception as e:
                 print(f"❌ Unexpected error: {e}")
