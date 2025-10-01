@@ -50,8 +50,8 @@ class PriceFeedManager:
             reconnection=True,
             reconnection_attempts=5,
             reconnection_delay=2,
-            logger=True,  # Enable Socket.IO logging for debugging
-            engineio_logger=True,  # Enable Engine.IO logging
+            logger=False,  # Enable Socket.IO logging for debugging
+            engineio_logger=False,  # Enable Engine.IO logging
             ssl_verify=False
         )
 
