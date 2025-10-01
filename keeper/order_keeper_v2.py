@@ -42,12 +42,16 @@ class PriceFeedManager:
         self.is_connected = False
 
         # Create async Socket.IO client
+        # Enable logging to debug Heroku issues
+        import logging
+        logging.basicConfig(level=logging.INFO)
+
         self.sio = socketio.AsyncClient(
             reconnection=True,
             reconnection_attempts=5,
             reconnection_delay=2,
-            logger=False,
-            engineio_logger=False,
+            logger=True,  # Enable Socket.IO logging for debugging
+            engineio_logger=True,  # Enable Engine.IO logging
             ssl_verify=False
         )
 
@@ -77,6 +81,8 @@ class PriceFeedManager:
 
     async def on_price_update(self, data):
         """Called when price update is received"""
+        print(f"\n[DEBUG] on_price_update called with data: {type(data)}")
+
         pair = data.get('pair')
         price_data = data.get('data', {})
         timestamp = data.get('timestamp')
@@ -94,6 +100,8 @@ class PriceFeedManager:
             # Trigger conditional order check with new price
             if hasattr(self, 'price_update_event'):
                 self.price_update_event.set()
+        else:
+            print(f"[DEBUG] No pair in data: {data}")
 
     async def fetch_initial_price(self, pair):
         """Fetch current price via HTTP API"""
