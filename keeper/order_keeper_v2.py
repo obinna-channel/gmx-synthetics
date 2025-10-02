@@ -16,9 +16,52 @@ from dotenv import load_dotenv
 from enum import Enum
 import socketio
 import aiohttp
+from zoneinfo import ZoneInfo
+from datetime import timedelta
 
 # Load environment variables
 load_dotenv()
+
+# ============================================================================
+# Market Hours Utilities
+# ============================================================================
+
+def is_market_open() -> bool:
+    """Check if US stock market is currently open (9:30 AM - 4:00 PM ET, Mon-Fri)"""
+    now_et = datetime.now(ZoneInfo("America/New_York"))
+
+    # Check if weekend
+    if now_et.weekday() >= 5:  # Saturday = 5, Sunday = 6
+        return False
+
+    # Check if within trading hours (9:30 AM - 4:00 PM)
+    market_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+    market_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
+
+    return market_open <= now_et < market_close
+
+def get_next_market_open() -> datetime:
+    """Get the next market open time (9:30 AM ET)"""
+    now_et = datetime.now(ZoneInfo("America/New_York"))
+
+    # Start with today at 9:30 AM
+    next_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+
+    # If we're past today's open, move to next day
+    if now_et >= next_open:
+        next_open += timedelta(days=1)
+
+    # Skip weekends
+    while next_open.weekday() >= 5:  # Saturday or Sunday
+        next_open += timedelta(days=1)
+
+    return next_open
+
+def seconds_until_market_open() -> float:
+    """Get seconds until next market open"""
+    next_open = get_next_market_open()
+    now_et = datetime.now(ZoneInfo("America/New_York"))
+    return (next_open - now_et).total_seconds()
 
 # Order Types from the contract
 class OrderType(Enum):
@@ -35,10 +78,11 @@ class OrderType(Enum):
 class PriceFeedManager:
     """Manages Socket.IO connection to Marks price feed server"""
 
-    def __init__(self, socket_url, pairs_to_watch):
+    def __init__(self, socket_url, pairs_to_watch, price_cache, price_update_queue):
         self.socket_url = socket_url
         self.pairs_to_watch = pairs_to_watch
-        self.price_cache = {}  # pair -> {'price': float, 'timestamp': str, 'data': dict}
+        self.price_cache = price_cache  # Shared cache
+        self.price_update_queue = price_update_queue  # Shared queue
         self.is_connected = False
 
         # Create async Socket.IO client
@@ -81,27 +125,24 @@ class PriceFeedManager:
 
     async def on_price_update(self, data):
         """Called when price update is received"""
-        print(f"\n[DEBUG] on_price_update called with data: {type(data)}")
-
         pair = data.get('pair')
         price_data = data.get('data', {})
         timestamp = data.get('timestamp')
 
         if pair:
+            price = price_data.get('price')
+
             # Update cache
             self.price_cache[pair] = {
-                'price': price_data.get('price'),
+                'price': price,
                 'timestamp': timestamp,
                 'data': price_data
             }
 
-            print(f"\n💰 Price Update: {pair} = {price_data.get('price')}")
+            print(f"\n💰 Price Update: {pair} = {price}")
 
-            # Trigger conditional order check with new price
-            if hasattr(self, 'price_update_event'):
-                self.price_update_event.set()
-        else:
-            print(f"[DEBUG] No pair in data: {data}")
+            # Notify via queue (non-blocking)
+            await self.price_update_queue.put((pair, price))
 
     async def fetch_initial_price(self, pair):
         """Fetch current price via HTTP API"""
@@ -196,6 +237,167 @@ class PriceFeedManager:
         """Get full price data for a pair"""
         return self.price_cache.get(pair)
 
+
+class StockPriceFeedManager:
+    """Manages WebSocket connection to Polygon.io for real-time stock prices"""
+
+    def __init__(self, api_key, tickers_to_watch, price_cache, price_update_queue):
+        self.api_key = api_key
+        self.tickers_to_watch = tickers_to_watch  # e.g., ['TSLA']
+        self.price_cache = price_cache  # Shared cache with crypto feed
+        self.price_update_queue = price_update_queue  # Shared queue
+        self.ws_url = "wss://socket.polygon.io/stocks"
+        self.is_connected = False
+        self.is_authenticated = False
+
+        # Last logged time for each ticker (for rate-limiting logs)
+        self.last_logged = {}
+
+        # WebSocket connection
+        self.ws = None
+
+    async def connect(self):
+        """Connect to Polygon.io WebSocket and authenticate"""
+        print(f"\n🔌 Connecting to Polygon.io...")
+        print(f"   Tickers: {', '.join(self.tickers_to_watch)}")
+
+        try:
+            import ssl
+            import certifi
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+
+            self.ws = await websockets.connect(self.ws_url, ssl=ssl_context)
+            print(f"✅ Connected to Polygon.io")
+
+            # Wait for connection confirmation
+            response = await self.ws.recv()
+            conn_data = json.loads(response)
+            print(f"   Status: {conn_data[0].get('message')}")
+
+            # Authenticate
+            auth_message = {
+                "action": "auth",
+                "params": self.api_key
+            }
+            await self.ws.send(json.dumps(auth_message))
+
+            # Wait for auth response
+            response = await self.ws.recv()
+            auth_data = json.loads(response)
+
+            if auth_data[0].get('status') == 'auth_success':
+                print(f"✅ Authenticated successfully")
+                self.is_authenticated = True
+                self.is_connected = True
+            else:
+                print(f"❌ Authentication failed: {auth_data}")
+                return False
+
+            # Subscribe to tickers
+            await self.subscribe_to_tickers()
+
+            # Start background tasks
+            asyncio.create_task(self.listen_for_trades())
+            asyncio.create_task(self.log_prices_periodically())
+
+            return True
+
+        except Exception as e:
+            print(f"❌ Failed to connect to Polygon.io: {e}")
+            return False
+
+    async def subscribe_to_tickers(self):
+        """Subscribe to trade streams for all tickers"""
+        print(f"\n📡 Subscribing to stock price feeds...")
+
+        for ticker in self.tickers_to_watch:
+            try:
+                subscribe_message = {
+                    "action": "subscribe",
+                    "params": f"T.{ticker}"  # T = Trades
+                }
+                await self.ws.send(json.dumps(subscribe_message))
+
+                # Wait for subscription confirmation
+                response = await self.ws.recv()
+                sub_data = json.loads(response)
+                print(f"   ✅ Subscribed to {ticker}")
+
+            except Exception as e:
+                print(f"   ❌ Failed to subscribe to {ticker}: {e}")
+
+    async def listen_for_trades(self):
+        """Listen for trade messages and update price cache"""
+        print(f"\n👂 Listening for stock trades (silent updates)...")
+
+        try:
+            while True:
+                message = await self.ws.recv()
+                data = json.loads(message)
+
+                for item in data:
+                    if item.get('ev') == 'T':  # Trade event
+                        await self.handle_trade(item)
+
+        except websockets.exceptions.ConnectionClosed:
+            print("\n❌ Polygon.io connection closed")
+            self.is_connected = False
+        except Exception as e:
+            print(f"\n❌ Error in trade listener: {e}")
+            self.is_connected = False
+
+    async def handle_trade(self, trade_data):
+        """Handle incoming trade - update cache silently, notify via queue"""
+        symbol = trade_data.get('sym')  # e.g., 'TSLA'
+        price = trade_data.get('p')      # Price
+
+        if symbol and price:
+            # Update cache silently
+            self.price_cache[symbol] = {
+                'price': price,
+                'timestamp': datetime.now().isoformat(),
+                'data': trade_data
+            }
+
+            # Notify via queue (non-blocking)
+            await self.price_update_queue.put((symbol, price))
+
+    async def log_prices_periodically(self):
+        """Log stock prices every 60 seconds"""
+        print(f"   📊 Price logging: every 60 seconds (24/7)\n")
+
+        while True:
+            try:
+                # Wait 60 seconds
+                await asyncio.sleep(60)
+
+                # Log all tracked tickers
+                print(f"\n📈 Stock Prices Update ({datetime.now().strftime('%H:%M:%S')})")
+                for ticker in self.tickers_to_watch:
+                    price_data = self.price_cache.get(ticker)
+                    if price_data:
+                        print(f"   {ticker}: ${price_data['price']:.2f}")
+                    else:
+                        print(f"   {ticker}: No data yet")
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"❌ Error in price logger: {e}")
+
+    async def disconnect(self):
+        """Disconnect from Polygon.io"""
+        if self.ws:
+            await self.ws.close()
+            self.is_connected = False
+
+    def get_price(self, ticker):
+        """Get current price for a ticker"""
+        if ticker in self.price_cache:
+            return self.price_cache[ticker]['price']
+        return None
+
+
 class OrderKeeper:
     def __init__(self):
         """Initialize the order keeper with contract connections"""
@@ -239,19 +441,41 @@ class OrderKeeper:
 
         # Price Feed Configuration
         self.PRICE_FEED_URL = "https://marks-server-a58cc19eb539.herokuapp.com/"
+
+        # Shared price cache and update queue
+        self.price_cache = {}  # pair/ticker -> {'price': float, 'timestamp': str, 'data': dict}
+        self.price_update_queue = asyncio.Queue()  # Queue of (pair/ticker, price) tuples
+
+        # Market to price pair mapping (supports both crypto and stocks)
         self.MARKET_PAIR_MAPPING = {
-            self.mUSDTNGN: "USDTNGN"  # Market address -> Price feed pair
+            self.mUSDTNGN: "USDTNGN",  # Crypto market -> price feed pair
+            # Stock markets will be added here when deployed
+            # e.g., "0x123...": "TSLA"
         }
 
-        # Initialize price feed manager
-        pairs_to_watch = list(set(self.MARKET_PAIR_MAPPING.values()))  # Unique pairs
-        self.price_feed = PriceFeedManager(self.PRICE_FEED_URL, pairs_to_watch)
+        # Initialize crypto price feed manager
+        crypto_pairs = [pair for pair in self.MARKET_PAIR_MAPPING.values() if pair == "USDTNGN"]
+        self.crypto_feed = PriceFeedManager(
+            self.PRICE_FEED_URL,
+            crypto_pairs,
+            self.price_cache,
+            self.price_update_queue
+        )
 
-        # Event to signal when a price update arrives (for conditional order monitoring)
-        self.price_update_event = asyncio.Event()
+        # Initialize stock price feed manager (Polygon.io)
+        polygon_api_key = os.getenv("POLYGON_API_KEY")
+        stock_tickers = ["TSLA"]  # Start with TSLA, will expand later
 
-        # Give price feed manager access to the event
-        self.price_feed.price_update_event = self.price_update_event
+        if polygon_api_key:
+            self.stock_feed = StockPriceFeedManager(
+                polygon_api_key,
+                stock_tickers,
+                self.price_cache,
+                self.price_update_queue
+            )
+        else:
+            self.stock_feed = None
+            print("⚠️  POLYGON_API_KEY not found - stock price feed disabled")
 
         # Price configuration - will be updated dynamically from price feed
         # Fallback to 1500 if no price data available yet
@@ -397,8 +621,9 @@ class OrderKeeper:
         # Get the pair for this market
         pair = self.MARKET_PAIR_MAPPING.get(self.mUSDTNGN, "USDTNGN")
 
-        # Get current price from feed
-        current_price = self.price_feed.get_price(pair)
+        # Get current price from shared cache
+        price_data = self.price_cache.get(pair)
+        current_price = price_data['price'] if price_data else None
 
         if current_price:
             # Use live price
@@ -871,45 +1096,54 @@ class OrderKeeper:
     async def monitor_conditional_orders(self):
         """
         Monitor conditional orders and execute when triggers are met
-        Triggered by price update events (event-driven, not polling)
+        Processes price updates from queue (both crypto and stocks)
         """
-        print("\n🔍 Starting conditional order monitor (event-driven)...")
+        print("\n🔍 Starting conditional order monitor (queue-based)...")
 
         while True:
             try:
-                # Wait for a price update event
-                await self.price_update_event.wait()
-
-                # Clear the event for next update
-                self.price_update_event.clear()
+                # Wait for next price update from queue
+                pair, price = await self.price_update_queue.get()
 
                 # Skip if no conditional orders to check
                 if not self.conditional_orders:
                     continue
 
-                # Get current price for the market
-                pair = self.MARKET_PAIR_MAPPING.get(self.mUSDTNGN, "USDTNGN")
-                current_price = self.price_feed.get_price(pair)
+                # Find all orders that use this pair
+                orders_to_check = []
+                for order_key, order in list(self.conditional_orders.items()):
+                    order_market = order['market']
+                    order_pair = self.MARKET_PAIR_MAPPING.get(order_market)
 
-                if current_price is None:
-                    # No price data yet, skip
+                    # Only check orders for the updated pair
+                    if order_pair == pair:
+                        orders_to_check.append((order_key, order))
+
+                # Skip if no orders for this pair
+                if not orders_to_check:
                     continue
 
-                # Check each conditional order
+                # Check trigger conditions for relevant orders
                 orders_to_execute = []
 
-                for order_key, order in list(self.conditional_orders.items()):
+                for order_key, order in orders_to_check:
+                    # For stocks: only trigger during market hours
+                    if pair in ["TSLA", "AMZN", "GOOG", "META", "MSFT", "NVDA", "AAPL"]:
+                        if not is_market_open():
+                            continue  # Skip stock orders outside market hours
+
                     # Check if trigger condition is met
-                    if self.check_trigger_condition(order, current_price):
+                    if self.check_trigger_condition(order, price):
                         orders_to_execute.append((order_key, order))
 
                 # Execute triggered orders
                 for order_key, order in orders_to_execute:
                     print(f"\n🎯 Conditional order triggered!")
+                    print(f"   Pair: {pair}")
                     print(f"   Order Key: {order_key}")
                     print(f"   Type: {order['orderTypeName']}")
                     print(f"   Trigger Price: {order['triggerPrice'] / 10**30:.4f}")
-                    print(f"   Current Price: {current_price:.4f}")
+                    print(f"   Current Price: {price:.4f}")
 
                     # Remove from conditional orders
                     if order_key in self.conditional_orders:
@@ -1116,15 +1350,23 @@ class OrderKeeper:
         """Main entry point for the keeper"""
 
         print("=" * 60)
-        print("       ORDER KEEPER V2 - WITH EXECUTION")
+        print("       ORDER KEEPER V2 - CRYPTO + STOCKS")
         print("=" * 60)
 
-        # Connect to price feed first
+        # Connect to crypto price feed
         try:
-            await self.price_feed.connect()
+            await self.crypto_feed.connect()
         except Exception as e:
-            print(f"❌ Failed to connect to price feed: {e}")
-            print("   Continuing without live prices (using fallback)")
+            print(f"❌ Failed to connect to crypto price feed: {e}")
+            print("   Continuing without live crypto prices (using fallback)")
+
+        # Connect to stock price feed (if configured)
+        if self.stock_feed:
+            try:
+                await self.stock_feed.connect()
+            except Exception as e:
+                print(f"❌ Failed to connect to stock price feed: {e}")
+                print("   Continuing without stock prices")
 
         # Start conditional order monitor as background task
         monitor_task = asyncio.create_task(self.monitor_conditional_orders())
@@ -1138,8 +1380,10 @@ class OrderKeeper:
                 print("\n👋 Shutting down...")
                 # Cancel monitor task
                 monitor_task.cancel()
-                # Disconnect price feed
-                await self.price_feed.disconnect()
+                # Disconnect price feeds
+                await self.crypto_feed.disconnect()
+                if self.stock_feed:
+                    await self.stock_feed.disconnect()
                 break
             except Exception as e:
                 print(f"❌ Unexpected error: {e}")
