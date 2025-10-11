@@ -1,6 +1,26 @@
 """
 Order Keeper V2 - Event Detection + Order Execution
 This version detects orders, fetches details, and executes them
+
+CONFIGURATION GUIDE:
+====================
+
+Adding New Stock Pairs:
+-----------------------
+1. Find line ~794: stock_tickers = ["TSLA"]
+2. Add your stock symbol to the list: ["TSLA", "AAPL", "MSFT", "AMZN", "GOOG"]
+3. Make sure your marks-server supports these symbols
+4. Update MARKET_PAIR_MAPPING (line ~773) when you deploy markets for these stocks
+
+Example:
+    stock_tickers = ["TSLA", "AAPL", "MSFT"]  # Track 3 stocks
+
+    MARKET_PAIR_MAPPING = {
+        self.mUSDTNGN_MARKET: "USDTNGN",
+        "0xYourTSLAMarket": "TSLA",
+        "0xYourAAPLMarket": "AAPL",
+        "0xYourMSFTMarket": "MSFT"
+    }
 """
 
 import asyncio
@@ -139,9 +159,7 @@ class PriceFeedManager:
                 'data': price_data
             }
 
-            print(f"\n💰 Price Update: {pair} = {price}")
-
-            # Notify via queue (non-blocking)
+            # Notify via queue (non-blocking) - printing handled in monitor_conditional_orders
             await self.price_update_queue.put((pair, price))
 
     async def fetch_initial_price(self, pair):
@@ -239,132 +257,155 @@ class PriceFeedManager:
 
 
 class StockPriceFeedManager:
-    """Manages WebSocket connection to Polygon.io for real-time stock prices"""
+    """Manages Socket.IO connection to Marks server for real-time stock prices"""
 
-    def __init__(self, api_key, tickers_to_watch, price_cache, price_update_queue):
-        self.api_key = api_key
-        self.tickers_to_watch = tickers_to_watch  # e.g., ['TSLA']
+    def __init__(self, socket_url, tickers_to_watch, price_cache, price_update_queue):
+        self.socket_url = socket_url
+        self.tickers_to_watch = tickers_to_watch  # e.g., ['TSLA', 'AAPL']
         self.price_cache = price_cache  # Shared cache with crypto feed
         self.price_update_queue = price_update_queue  # Shared queue
-        self.ws_url = "wss://socket.polygon.io/stocks"
         self.is_connected = False
-        self.is_authenticated = False
 
-        # Last logged time for each ticker (for rate-limiting logs)
-        self.last_logged = {}
+        # Create async Socket.IO client
+        import logging
+        logging.basicConfig(level=logging.INFO)
 
-        # WebSocket connection
-        self.ws = None
+        self.sio = socketio.AsyncClient(
+            reconnection=True,
+            reconnection_attempts=5,
+            reconnection_delay=2,
+            logger=False,
+            engineio_logger=False,
+            ssl_verify=False  # For Heroku
+        )
 
-    async def connect(self):
-        """Connect to Polygon.io WebSocket and authenticate"""
-        print(f"\n🔌 Connecting to Polygon.io...")
-        print(f"   Tickers: {', '.join(self.tickers_to_watch)}")
+        # Register event handlers
+        self.sio.on('connect', self.on_connect)
+        self.sio.on('disconnect', self.on_disconnect)
+        self.sio.on('stock_price_update', self.on_stock_price_update)
+        self.sio.on('connect_error', self.on_connect_error)
 
-        try:
-            import ssl
-            import certifi
-            ssl_context = ssl.create_default_context(cafile=certifi.where())
+    async def on_connect(self):
+        """Called when connected to stock price feed server"""
+        print(f"\n✅ Stock Price Feed Connected")
+        print(f"   Socket ID: {self.sio.sid}")
+        self.is_connected = True
 
-            self.ws = await websockets.connect(self.ws_url, ssl=ssl_context)
-            print(f"✅ Connected to Polygon.io")
+        # Subscribe to all tickers
+        await self.subscribe_to_tickers()
 
-            # Wait for connection confirmation
-            response = await self.ws.recv()
-            conn_data = json.loads(response)
-            print(f"   Status: {conn_data[0].get('message')}")
+    async def on_disconnect(self):
+        """Called when disconnected from server"""
+        print(f"\n⚠️  Stock Price Feed Disconnected")
+        self.is_connected = False
 
-            # Authenticate
-            auth_message = {
-                "action": "auth",
-                "params": self.api_key
-            }
-            await self.ws.send(json.dumps(auth_message))
+    async def on_connect_error(self, data):
+        """Called when connection error occurs"""
+        print(f"\n❌ Stock Price Feed Connection Error: {data}")
 
-            # Wait for auth response
-            response = await self.ws.recv()
-            auth_data = json.loads(response)
+    async def on_stock_price_update(self, data):
+        """Called when stock price update is received"""
+        symbol = data.get('symbol')
+        price_data = data.get('data', {})
+        timestamp = data.get('timestamp')
 
-            if auth_data[0].get('status') == 'auth_success':
-                print(f"✅ Authenticated successfully")
-                self.is_authenticated = True
-                self.is_connected = True
-            else:
-                print(f"❌ Authentication failed: {auth_data}")
-                return False
+        if symbol:
+            price = price_data.get('price')
 
-            # Subscribe to tickers
-            await self.subscribe_to_tickers()
-
-            # Start background tasks
-            asyncio.create_task(self.listen_for_trades())
-            asyncio.create_task(self.log_prices_periodically())
-
-            return True
-
-        except Exception as e:
-            print(f"❌ Failed to connect to Polygon.io: {e}")
-            return False
-
-    async def subscribe_to_tickers(self):
-        """Subscribe to trade streams for all tickers"""
-        print(f"\n📡 Subscribing to stock price feeds...")
-
-        for ticker in self.tickers_to_watch:
-            try:
-                subscribe_message = {
-                    "action": "subscribe",
-                    "params": f"T.{ticker}"  # T = Trades
-                }
-                await self.ws.send(json.dumps(subscribe_message))
-
-                # Wait for subscription confirmation
-                response = await self.ws.recv()
-                sub_data = json.loads(response)
-                print(f"   ✅ Subscribed to {ticker}")
-
-            except Exception as e:
-                print(f"   ❌ Failed to subscribe to {ticker}: {e}")
-
-    async def listen_for_trades(self):
-        """Listen for trade messages and update price cache"""
-        print(f"\n👂 Listening for stock trades (silent updates)...")
-
-        try:
-            while True:
-                message = await self.ws.recv()
-                data = json.loads(message)
-
-                for item in data:
-                    if item.get('ev') == 'T':  # Trade event
-                        await self.handle_trade(item)
-
-        except websockets.exceptions.ConnectionClosed:
-            print("\n❌ Polygon.io connection closed")
-            self.is_connected = False
-        except Exception as e:
-            print(f"\n❌ Error in trade listener: {e}")
-            self.is_connected = False
-
-    async def handle_trade(self, trade_data):
-        """Handle incoming trade - update cache silently, notify via queue"""
-        symbol = trade_data.get('sym')  # e.g., 'TSLA'
-        price = trade_data.get('p')      # Price
-
-        if symbol and price:
-            # Update cache silently
+            # Update cache
             self.price_cache[symbol] = {
                 'price': price,
-                'timestamp': datetime.now().isoformat(),
-                'data': trade_data
+                'timestamp': timestamp,
+                'data': price_data
             }
+
+            print(f"\n📈 Stock Price Update: {symbol} = ${price:.2f}")
 
             # Notify via queue (non-blocking)
             await self.price_update_queue.put((symbol, price))
 
+    async def fetch_initial_price(self, ticker):
+        """Fetch current stock price via HTTP API"""
+        # Construct API URL from socket URL
+        base_url = self.socket_url.rstrip('/')
+        api_url = f"{base_url}/api/v1/price/current/{ticker}"
+
+        try:
+            # Create SSL context that doesn't verify certificates (for Heroku)
+            connector = aiohttp.TCPConnector(ssl=False)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.get(api_url, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data
+                    else:
+                        print(f"   ⚠️  HTTP {response.status} fetching price for {ticker}")
+                        return None
+        except Exception as e:
+            print(f"   ⚠️  Error fetching initial price for {ticker}: {e}")
+            return None
+
+    async def connect(self):
+        """Connect to the Socket.IO server"""
+        print(f"\n🔌 Connecting to stock price feed: {self.socket_url}")
+        print(f"   Tickers: {', '.join(self.tickers_to_watch)}")
+
+        try:
+            await self.sio.connect(
+                self.socket_url,
+                transports=['websocket'],
+                wait_timeout=10,
+                socketio_path='/socket.io'
+            )
+            return True
+        except Exception as e:
+            print(f"❌ Failed to connect to stock price feed: {e}")
+            return False
+
+    async def subscribe_to_tickers(self):
+        """Subscribe to all tickers and fetch initial prices"""
+        print(f"\n📡 Subscribing to stock price feeds...")
+
+        for ticker in self.tickers_to_watch:
+            try:
+                # Subscribe to Socket.IO updates
+                response = await self.sio.call('subscribe', {'stock': ticker}, timeout=10)
+                print(f"   ✅ Subscribed to {ticker}")
+
+                # Fetch current price via HTTP API
+                price_data = await self.fetch_initial_price(ticker)
+
+                if price_data and 'price' in price_data:
+                    # Cache the initial price
+                    self.price_cache[ticker] = {
+                        'price': price_data['price'],
+                        'timestamp': price_data.get('timestamp'),
+                        'data': price_data
+                    }
+                    print(f"   💰 Initial price: ${price_data['price']:.2f}")
+                else:
+                    print(f"   ⚠️  Could not fetch initial price for {ticker}")
+
+            except Exception as e:
+                print(f"   ❌ Failed to subscribe to {ticker}: {e}")
+
+        # Final check - if still no prices, wait for first Socket.IO update
+        if not any(ticker in self.price_cache for ticker in self.tickers_to_watch):
+            print(f"\n⏳ Waiting for first Socket.IO price update...")
+            max_wait = 10  # Wait up to 10 seconds
+            waited = 0
+            while not any(ticker in self.price_cache for ticker in self.tickers_to_watch) and waited < max_wait:
+                await asyncio.sleep(0.5)
+                waited += 0.5
+
+            if any(ticker in self.price_cache for ticker in self.tickers_to_watch):
+                print(f"   ✅ Received price update")
+            else:
+                print(f"   ⚠️  No price data received for stocks, will wait for updates")
+
     async def log_prices_periodically(self):
         """Log stock prices every 60 seconds"""
-        print(f"   📊 Price logging: every 60 seconds (24/7)\n")
+        print(f"   📊 Stock Price logging: every 60 seconds\n")
 
         while True:
             try:
@@ -386,9 +427,9 @@ class StockPriceFeedManager:
                 print(f"❌ Error in price logger: {e}")
 
     async def disconnect(self):
-        """Disconnect from Polygon.io"""
-        if self.ws:
-            await self.ws.close()
+        """Disconnect from server"""
+        if self.sio.connected:
+            await self.sio.disconnect()
             self.is_connected = False
 
     def get_price(self, ticker):
@@ -396,6 +437,305 @@ class StockPriceFeedManager:
         if ticker in self.price_cache:
             return self.price_cache[ticker]['price']
         return None
+
+
+# ============================================================================
+# Liquidation Monitor
+# ============================================================================
+
+class LiquidationMonitor:
+    """Monitors positions and executes liquidations when positions become undercollateralized"""
+
+    def __init__(self, keeper):
+        """Initialize liquidation monitor with reference to main keeper"""
+        self.keeper = keeper
+        self.w3 = keeper.w3
+        self.account = keeper.account
+
+        # Configuration (can be moved to env variables later)
+        self.SCAN_INTERVAL = int(os.getenv("LIQUIDATION_SCAN_INTERVAL", "30"))  # seconds
+        self.PRICE_TRIGGER_THRESHOLD = float(os.getenv("LIQUIDATION_PRICE_TRIGGER", "0.01"))  # 1%
+        self.ENABLED = os.getenv("ENABLE_LIQUIDATIONS", "true").lower() == "true"
+        self.MAX_GAS_PRICE_GWEI = int(os.getenv("LIQUIDATION_MAX_GAS_PRICE", "50"))
+
+        # Markets to monitor (use market token addresses)
+        self.markets = [keeper.mUSDTNGN_MARKET]
+
+        # State tracking
+        self.last_scan_time = 0
+        self.last_price = {}
+        self.executing_liquidations = set()  # Track ongoing liquidations to prevent duplicates
+
+        print(f"💀 Liquidation Monitor initialized")
+        print(f"   Enabled: {self.ENABLED}")
+        print(f"   Scan interval: {self.SCAN_INTERVAL}s")
+        print(f"   Price trigger: {self.PRICE_TRIGGER_THRESHOLD*100}%")
+        print(f"   Markets: {len(self.markets)}")
+
+    def get_market_prices_for_reader(self, market):
+        """
+        Build market prices struct for Reader contract calls
+        Returns tuple of (indexTokenPrice, longTokenPrice, shortTokenPrice)
+        Each price is a tuple of (min, max)
+        """
+        prices = self.keeper.get_current_prices()
+
+        # Market prices struct for Reader
+        # Structure: ((minIndex, maxIndex), (minLong, maxLong), (minShort, maxShort))
+        return (
+            (prices[self.keeper.mUSDTNGN], prices[self.keeper.mUSDTNGN]),  # indexTokenPrice (min, max)
+            (prices[self.keeper.mUSD], prices[self.keeper.mUSD]),           # longTokenPrice (min, max)
+            (prices[self.keeper.mNGN], prices[self.keeper.mNGN])            # shortTokenPrice (min, max)
+        )
+
+    async def scan_positions(self):
+        """Scan all positions for liquidation opportunities"""
+
+        print(f"\n🔍 [Liquidation] Scanning positions...")
+
+        liquidation_count = 0
+
+        try:
+            for market in self.markets:
+                # Get market-specific accounts that have positions
+                # For now, we'll check a known list of accounts
+                # TODO: In production, enumerate all position keys from DataStore
+
+                accounts_to_check = [
+                    "0x3Bcc96fc2A86043D228c61A5C92f401B25CECE44",
+                    "0xB880CBFE2fb746838719805CEcE154b58D03A79b",
+                    "0xBaB0D0892Bf8563B731f8e8970fE856ce9308292",
+                    self.account.address  # Check our own account too
+                ]
+
+                for account in accounts_to_check:
+                    # Check both long and short positions
+                    for is_long in [True, False]:
+                        try:
+                            position_key = Web3.keccak(
+                                encode(
+                                    ['address', 'address', 'address', 'bool'],
+                                    [
+                                        Web3.to_checksum_address(account),
+                                        Web3.to_checksum_address(market),
+                                        Web3.to_checksum_address(self.keeper.mUSD),
+                                        is_long
+                                    ]
+                                )
+                            ).hex()
+
+                            # Check if liquidatable
+                            was_liquidated = await self.check_and_liquidate(position_key, market, account, is_long)
+                            if was_liquidated:
+                                liquidation_count += 1
+
+                        except Exception as e:
+                            # Position doesn't exist or error checking - normal, continue
+                            pass
+
+            if liquidation_count > 0:
+                print(f"   ✅ Executed {liquidation_count} liquidation(s)")
+            else:
+                print(f"   ✓ No liquidations needed")
+
+        except Exception as e:
+            print(f"   ❌ Error scanning positions: {e}")
+
+    async def check_and_liquidate(self, position_key, market, account, is_long):
+        """Check if a position is liquidatable and execute if needed"""
+
+        # Skip if already executing
+        if position_key in self.executing_liquidations:
+            return False
+
+        try:
+            # Get current prices
+            market_prices = self.get_market_prices_for_reader(market)
+
+            # Check if position is liquidatable via Reader contract
+            is_liquidatable, reason, info = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self.keeper.reader.functions.isPositionLiquidatable(
+                    Web3.to_checksum_address(self.keeper.DATA_STORE),
+                    Web3.to_checksum_address(self.keeper.REFERRAL_STORAGE),
+                    bytes.fromhex(position_key[2:]),
+                    (
+                        Web3.to_checksum_address(market),
+                        Web3.to_checksum_address(self.keeper.mUSDTNGN),  # indexToken
+                        Web3.to_checksum_address(self.keeper.mUSD),      # longToken
+                        Web3.to_checksum_address(self.keeper.mNGN)       # shortToken
+                    ),
+                    market_prices,
+                    True,  # shouldValidateMinCollateralUsd
+                    True   # forLiquidation
+                ).call()
+            )
+
+            if is_liquidatable:
+                print(f"\n💀 LIQUIDATABLE POSITION FOUND!")
+                print(f"   Account: {account}")
+                print(f"   Position: {'LONG' if is_long else 'SHORT'}")
+                print(f"   Reason: {reason}")
+                print(f"   Position Key: {position_key}")
+
+                # Execute liquidation and return success status
+                success = await self.execute_liquidation(market, account, is_long)
+                return success
+
+        except Exception as e:
+            # Position likely doesn't exist or error checking
+            pass
+
+        return False
+
+    async def execute_liquidation(self, market, account, is_long):
+        """Execute a liquidation transaction. Returns True if successful, False otherwise."""
+
+        try:
+            # Check gas price
+            current_gas_price = self.w3.eth.gas_price
+            max_gas_price = self.MAX_GAS_PRICE_GWEI * 10**9
+
+            if current_gas_price > max_gas_price:
+                print(f"   ⚠️  Gas price too high ({current_gas_price/10**9:.2f} gwei > {self.MAX_GAS_PRICE_GWEI} gwei)")
+                print(f"   Skipping liquidation")
+                return
+
+            print(f"\n⚡ Executing liquidation...")
+            print(f"   Account: {account}")
+            print(f"   Market: {market}")
+            print(f"   Side: {'LONG' if is_long else 'SHORT'}")
+
+            # Update MockOracleProvider prices first (like order execution does)
+            await self.keeper.update_mock_provider_prices()
+
+            # Build oracle params
+            oracle_params = self.build_oracle_params()
+
+            # Build transaction
+            tx = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self.keeper.liquidation_handler.functions.executeLiquidation(
+                    Web3.to_checksum_address(account),
+                    Web3.to_checksum_address(market),
+                    Web3.to_checksum_address(self.keeper.mUSD),  # collateralToken
+                    is_long,
+                    oracle_params
+                ).build_transaction({
+                    'from': self.account.address,
+                    'gas': 5_000_000,
+                    'gasPrice': current_gas_price,
+                    'nonce': self.w3.eth.get_transaction_count(self.account.address)
+                })
+            )
+
+            # Sign and send
+            signed_tx = self.account.sign_transaction(tx)
+            tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+
+            print(f"   📤 TX submitted: {tx_hash.hex()}")
+
+            # Wait for receipt (non-blocking)
+            receipt = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+            )
+
+            if receipt.status == 1:
+                print(f"   ✅ Liquidation successful!")
+                print(f"   Gas used: {receipt.gasUsed:,}")
+                return True
+            else:
+                print(f"   ❌ Liquidation transaction failed")
+                print(f"   Transaction hash: {tx_hash.hex()}")
+                print(f"   View on Arbiscan: https://sepolia.arbiscan.io/tx/{tx_hash.hex()}")
+                # Try to get revert reason by replaying transaction
+                try:
+                    # Get the transaction details
+                    tx_details = self.w3.eth.get_transaction(tx_hash)
+                    # Replay the transaction to get the revert reason
+                    self.w3.eth.call({
+                        'to': tx_details['to'],
+                        'from': tx_details['from'],
+                        'data': tx_details['input'],
+                        'value': tx_details.get('value', 0)
+                    }, receipt['blockNumber'] - 1)
+                except Exception as revert_error:
+                    error_msg = str(revert_error)
+                    print(f"   Revert reason: {error_msg}")
+                    # Try to extract readable error from the message
+                    if "execution reverted:" in error_msg:
+                        print(f"   Error detail: {error_msg.split('execution reverted:')[1].strip()}")
+                return False
+
+        except Exception as e:
+            print(f"   ❌ Error executing liquidation: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def build_oracle_params(self):
+        """Build oracle params for liquidation execution (same as order execution)"""
+
+        prices = self.keeper.get_current_prices()
+
+        # Tokens array
+        tokens = [
+            Web3.to_checksum_address(self.keeper.mUSDTNGN),
+            Web3.to_checksum_address(self.keeper.mUSD),
+            Web3.to_checksum_address(self.keeper.mNGN)
+        ]
+
+        # Providers array (use MockOracleProvider)
+        providers = [Web3.to_checksum_address(self.keeper.MOCK_PROVIDER)] * 3
+
+        # Data array - encode prices as (uint256 min, uint256 max) for each token
+        data = []
+        for token in tokens:
+            price = prices[token]
+            # Encode as (minPrice, maxPrice) - both same for spot price
+            encoded = encode(['uint256', 'uint256'], [price, price])
+            data.append(encoded)
+
+        return (tokens, providers, data)
+
+    async def on_price_update(self, pair, price):
+        """Handle price updates from price feed - trigger scan if significant move"""
+
+        if pair in self.last_price:
+            old_price = self.last_price[pair]
+            price_change = abs(price - old_price) / old_price
+
+            if price_change >= self.PRICE_TRIGGER_THRESHOLD:
+                print(f"\n📈 [Liquidation] Price moved {price_change*100:.2f}% - triggering scan")
+                await self.scan_positions()
+
+        self.last_price[pair] = price
+
+    async def monitor_loop(self):
+        """Main monitoring loop"""
+
+        if not self.ENABLED:
+            print("⚠️  Liquidation monitoring is DISABLED")
+            return
+
+        print(f"\n👁️  Starting liquidation monitor...")
+
+        while True:
+            try:
+                current_time = asyncio.get_event_loop().time()
+
+                # Periodic scan based on interval
+                if current_time - self.last_scan_time >= self.SCAN_INTERVAL:
+                    await self.scan_positions()
+                    self.last_scan_time = current_time
+
+                # Sleep for 5 seconds before checking again
+                await asyncio.sleep(5)
+
+            except Exception as e:
+                print(f"❌ [Liquidation] Error in monitor loop: {e}")
+                await asyncio.sleep(10)
 
 
 class OrderKeeper:
@@ -426,15 +766,19 @@ class OrderKeeper:
         self.account = self.w3.eth.account.from_key(private_key)
         self.w3.eth.default_account = self.account.address
 
-        # Contract addresses
+        # Contract addresses (from marks-arbitrumSepolia-deployments.md)
         self.EVENT_EMITTER = "0x3BFbE4d5cB3EEC123Dbbba76c5c78fF8b43b8C0C"
         self.DATA_STORE = "0xD70154A2e4BEF0485Bb6d90265a4F878A4556111"
         self.ORDER_HANDLER = "0x83f2D66af7f794893C31c0B32BD2D4cE826871d7"
+        self.READER = "0xA8c6A5902af85aA8e54560e7E88ddf7253D0C3b8"
+        self.REFERRAL_STORAGE = "0x3B6DaA746aB0CE60e8eBF9F6F0157073d2d54547"
+        self.LIQUIDATION_HANDLER = "0x08eEB7f410d94FF4B0a637b81d2bcD62A2FCBC8B"  # Deployed via hardhat deploy
 
         # Token addresses (Updated for mUSDTNGN/mUSD/mNGN market)
         self.mUSD = "0x85bf04B07A6df0172372b959C1C73F3e90F73faf"  # mUSD (long token)
         self.mNGN = "0x2e08218698339AFdba205312cc23dAe8c3690827"  # mNGN (short token)
         self.mUSDTNGN = "0x168e829F546940AE7Ab336aF4Bd95d07f7f6cE73"  # mUSDTNGN (index token)
+        self.mUSDTNGN_MARKET = "0x5E63276Caae0FF49b2762b98A1d37941AA50F804"  # Market token (Market 9)
 
         # MockOracleProvider address (will be loaded from file if exists)
         self.MOCK_PROVIDER = self.load_mock_provider_address()
@@ -447,14 +791,21 @@ class OrderKeeper:
         self.price_update_queue = asyncio.Queue()  # Queue of (pair/ticker, price) tuples
 
         # Market to price pair mapping (supports both crypto and stocks)
+        # IMPORTANT: Use MARKET TOKEN address (the market contract), not index token
+        #
+        # To add a stock market:
+        # 1. Deploy the market contract for your stock (e.g., TSLA market)
+        # 2. Add the market token address here: "0xMarketAddress": "TSLA"
+        # 3. Add the stock ticker to stock_tickers list above (line ~794)
         self.MARKET_PAIR_MAPPING = {
-            self.mUSDTNGN: "USDTNGN",  # Crypto market -> price feed pair
-            # Stock markets will be added here when deployed
-            # e.g., "0x123...": "TSLA"
+            self.mUSDTNGN_MARKET: "USDTNGN",  # Crypto market
+            # Stock markets - add here when deployed:
+            # "0x123...": "TSLA",
+            # "0x456...": "AAPL",
         }
 
         # Initialize crypto price feed manager
-        crypto_pairs = [pair for pair in self.MARKET_PAIR_MAPPING.values() if pair == "USDTNGN"]
+        crypto_pairs = ["USDTNGN", "USDTPKR", "USDTARS", "USDTCOP"]  # Crypto pairs to watch
         self.crypto_feed = PriceFeedManager(
             self.PRICE_FEED_URL,
             crypto_pairs,
@@ -462,20 +813,19 @@ class OrderKeeper:
             self.price_update_queue
         )
 
-        # Initialize stock price feed manager (Polygon.io)
-        polygon_api_key = os.getenv("POLYGON_API_KEY")
-        stock_tickers = ["TSLA"]  # Start with TSLA, will expand later
+        # Initialize stock price feed manager (marks-server)
+        # CONFIGURATION: Add more stock tickers here as needed
+        stock_tickers = ["TSLA", "AAPL", "NVDA","META"]  # Add more: ["TSLA", "AAPL", "MSFT", "AMZN", "GOOG"]
 
-        if polygon_api_key:
-            self.stock_feed = StockPriceFeedManager(
-                polygon_api_key,
-                stock_tickers,
-                self.price_cache,
-                self.price_update_queue
-            )
-        else:
-            self.stock_feed = None
-            print("⚠️  POLYGON_API_KEY not found - stock price feed disabled")
+        # Use the same marks-server for stocks
+        stock_server_url = os.getenv("STOCK_SERVER_URL", "https://marks-server-a58cc19eb539.herokuapp.com")
+
+        self.stock_feed = StockPriceFeedManager(
+            stock_server_url,
+            stock_tickers,
+            self.price_cache,
+            self.price_update_queue
+        )
 
         # Price configuration - will be updated dynamically from price feed
         # Fallback to 1500 if no price data available yet
@@ -524,6 +874,24 @@ class OrderKeeper:
                 ],
                 "name": "containsBytes32",
                 "outputs": [{"name": "", "type": "bool"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [{"name": "setKey", "type": "bytes32"}],
+                "name": "getBytes32Count",
+                "outputs": [{"name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"name": "setKey", "type": "bytes32"},
+                    {"name": "start", "type": "uint256"},
+                    {"name": "end", "type": "uint256"}
+                ],
+                "name": "getBytes32ValuesAt",
+                "outputs": [{"name": "", "type": "bytes32[]"}],
                 "stateMutability": "view",
                 "type": "function"
             }
@@ -576,6 +944,148 @@ class OrderKeeper:
             }
         ]
 
+        # Reader ABI for position queries
+        self.reader_abi = [
+            {
+                "inputs": [
+                    {"name": "dataStore", "type": "address"},
+                    {"name": "key", "type": "bytes32"}
+                ],
+                "name": "getPosition",
+                "outputs": [
+                    {
+                        "components": [
+                            {
+                                "components": [
+                                    {"name": "account", "type": "address"},
+                                    {"name": "market", "type": "address"},
+                                    {"name": "collateralToken", "type": "address"}
+                                ],
+                                "name": "addresses",
+                                "type": "tuple"
+                            },
+                            {
+                                "components": [
+                                    {"name": "sizeInUsd", "type": "uint256"},
+                                    {"name": "sizeInTokens", "type": "uint256"},
+                                    {"name": "collateralAmount", "type": "uint256"},
+                                    {"name": "borrowingFactor", "type": "uint256"},
+                                    {"name": "fundingFeeAmountPerSize", "type": "uint256"},
+                                    {"name": "longTokenClaimableFundingAmountPerSize", "type": "uint256"},
+                                    {"name": "shortTokenClaimableFundingAmountPerSize", "type": "uint256"},
+                                    {"name": "increasedAtTime", "type": "uint256"},
+                                    {"name": "decreasedAtTime", "type": "uint256"}
+                                ],
+                                "name": "numbers",
+                                "type": "tuple"
+                            },
+                            {
+                                "components": [
+                                    {"name": "isLong", "type": "bool"}
+                                ],
+                                "name": "flags",
+                                "type": "tuple"
+                            }
+                        ],
+                        "name": "",
+                        "type": "tuple"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"name": "dataStore", "type": "address"},
+                    {"name": "referralStorage", "type": "address"},
+                    {"name": "positionKey", "type": "bytes32"},
+                    {
+                        "components": [
+                            {"name": "marketToken", "type": "address"},
+                            {"name": "indexToken", "type": "address"},
+                            {"name": "longToken", "type": "address"},
+                            {"name": "shortToken", "type": "address"}
+                        ],
+                        "name": "market",
+                        "type": "tuple"
+                    },
+                    {
+                        "components": [
+                            {
+                                "components": [
+                                    {"name": "min", "type": "uint256"},
+                                    {"name": "max", "type": "uint256"}
+                                ],
+                                "name": "indexTokenPrice",
+                                "type": "tuple"
+                            },
+                            {
+                                "components": [
+                                    {"name": "min", "type": "uint256"},
+                                    {"name": "max", "type": "uint256"}
+                                ],
+                                "name": "longTokenPrice",
+                                "type": "tuple"
+                            },
+                            {
+                                "components": [
+                                    {"name": "min", "type": "uint256"},
+                                    {"name": "max", "type": "uint256"}
+                                ],
+                                "name": "shortTokenPrice",
+                                "type": "tuple"
+                            }
+                        ],
+                        "name": "prices",
+                        "type": "tuple"
+                    },
+                    {"name": "shouldValidateMinCollateralUsd", "type": "bool"},
+                    {"name": "forLiquidation", "type": "bool"}
+                ],
+                "name": "isPositionLiquidatable",
+                "outputs": [
+                    {"name": "", "type": "bool"},
+                    {"name": "", "type": "string"},
+                    {
+                        "components": [
+                            {"name": "remainingCollateralUsd", "type": "int256"},
+                            {"name": "minCollateralUsd", "type": "int256"},
+                            {"name": "minCollateralUsdForLeverage", "type": "int256"}
+                        ],
+                        "name": "",
+                        "type": "tuple"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            }
+        ]
+
+        # LiquidationHandler ABI for executing liquidations
+        self.liquidation_handler_abi = [
+            {
+                "inputs": [
+                    {"name": "account", "type": "address"},
+                    {"name": "market", "type": "address"},
+                    {"name": "collateralToken", "type": "address"},
+                    {"name": "isLong", "type": "bool"},
+                    {
+                        "name": "oracleParams",
+                        "type": "tuple",
+                        "components": [
+                            {"name": "tokens", "type": "address[]"},
+                            {"name": "providers", "type": "address[]"},
+                            {"name": "data", "type": "bytes[]"}
+                        ]
+                    }
+                ],
+                "name": "executeLiquidation",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            }
+        ]
+
         # Setup contracts
         self.datastore = self.w3.eth.contract(
             address=Web3.to_checksum_address(self.DATA_STORE),
@@ -585,6 +1095,16 @@ class OrderKeeper:
         self.order_handler = self.w3.eth.contract(
             address=Web3.to_checksum_address(self.ORDER_HANDLER),
             abi=self.order_handler_abi
+        )
+
+        self.reader = self.w3.eth.contract(
+            address=Web3.to_checksum_address(self.READER),
+            abi=self.reader_abi
+        )
+
+        self.liquidation_handler = self.w3.eth.contract(
+            address=Web3.to_checksum_address(self.LIQUIDATION_HANDLER),
+            abi=self.liquidation_handler_abi
         )
 
         if self.MOCK_PROVIDER:
@@ -601,11 +1121,16 @@ class OrderKeeper:
         self.executing_orders = {}  # Orders currently being executed
         self.failed_orders = {}  # Orders that failed execution
 
+        # Initialize liquidation monitor
+        self.liquidation_monitor = LiquidationMonitor(self)
+
         print(f"📡 Order Keeper V2 initialized")
         print(f"   Account: {self.account.address}")
         print(f"   EventEmitter: {self.EVENT_EMITTER}")
         print(f"   DataStore: {self.DATA_STORE}")
         print(f"   OrderHandler: {self.ORDER_HANDLER}")
+        print(f"   Reader: {self.READER}")
+        print(f"   LiquidationHandler: {self.LIQUIDATION_HANDLER}")
         print(f"   MockProvider: {self.MOCK_PROVIDER if self.MOCK_PROVIDER else 'Not configured'}")
 
     def load_mock_provider_address(self):
@@ -628,7 +1153,6 @@ class OrderKeeper:
         if current_price:
             # Use live price
             exchange_rate = current_price
-            print(f"   Using live price: {exchange_rate} {pair}")
         else:
             # Fallback to stored rate
             exchange_rate = self.EXCHANGE_RATE
@@ -653,10 +1177,11 @@ class OrderKeeper:
         )
         return storage_key
 
-    async def fetch_order_details(self, order_key):
+    async def fetch_order_details(self, order_key, silent=False):
         """Fetch complete order details from DataStore (parallelized for speed)"""
 
-        print(f"\n📄 Fetching order details for: {order_key}")
+        if not silent:
+            print(f"\n📄 Fetching order details for: {order_key}")
 
         order = {'key': order_key}
 
@@ -729,18 +1254,19 @@ class OrderKeeper:
             except:
                 order['orderTypeName'] = f"Unknown({order_type_int})"
 
-            print(f"  ✅ Fetched order details:")
-            print(f"     Type: {order['orderTypeName']}")
-            print(f"     Market: {order['market']}")
-            print(f"     Account: {order['account']}")
-            print(f"     Size Delta USD: {order['sizeDeltaUsd'] / 10**30:.2f}")
-            print(f"     Collateral Token: {order['initialCollateralToken']}")
-            print(f"     Collateral Amount: {order['initialCollateralDeltaAmount']}")
-            print(f"     Is Long: {order['isLong']}")
-            print(f"     Acceptable Price: {order['acceptablePrice'] / 10**30:.6f}")
-            print(f"     Min Output Amount: {order['minOutputAmount']}")
-            print(f"     Trigger Price: {order['triggerPrice'] / 10**30:.4f}" if order['triggerPrice'] > 0 else "     Trigger Price: N/A (Market Order)")
-            print(f"     Is Frozen: {order['isFrozen']}")
+            if not silent:
+                print(f"  ✅ Fetched order details:")
+                print(f"     Type: {order['orderTypeName']}")
+                print(f"     Market: {order['market']}")
+                print(f"     Account: {order['account']}")
+                print(f"     Size Delta USD: {order['sizeDeltaUsd'] / 10**30:.2f}")
+                print(f"     Collateral Token: {order['initialCollateralToken']}")
+                print(f"     Collateral Amount: {order['initialCollateralDeltaAmount']}")
+                print(f"     Is Long: {order['isLong']}")
+                print(f"     Acceptable Price: {order['acceptablePrice'] / 10**12:.6f}")
+                print(f"     Min Output Amount: {order['minOutputAmount']}")
+                print(f"     Trigger Price: {order['triggerPrice'] / 10**12:.4f}" if order['triggerPrice'] > 0 else "     Trigger Price: N/A (Market Order)")
+                print(f"     Is Frozen: {order['isFrozen']}")
 
             # OPTIMIZATION: Position validation removed for speed
             # The contract will validate position on execution
@@ -749,13 +1275,168 @@ class OrderKeeper:
             return order
 
         except Exception as e:
-            print(f"  ❌ Error fetching order details: {e}")
+            if not silent:
+                print(f"  ❌ Error fetching order details: {e}")
             return None
+
+    async def recover_orders(self):
+        """
+        Recover order state from blockchain on startup.
+        Queries the DataStore ORDER_LIST to find all active orders and rebuilds order queues.
+        Only recovers orders created on or after October 11, 2025.
+        """
+        # Date filter: Only recover orders from this date onwards
+        from datetime import datetime
+        CUTOFF_DATE = datetime(2025, 10, 11, 0, 0, 0)
+        CUTOFF_TIMESTAMP = int(CUTOFF_DATE.timestamp())
+
+        print("\n" + "=" * 60)
+        print("🔄 STARTING ORDER RECOVERY FROM BLOCKCHAIN")
+        print("=" * 60)
+        print(f"\n📅 Date Filter: Only recovering orders from {CUTOFF_DATE.strftime('%B %d, %Y')} onwards")
+        print(f"   Cutoff Unix Timestamp: {CUTOFF_TIMESTAMP}")
+
+        try:
+            # Calculate ORDER_LIST key
+            ORDER_LIST = Web3.keccak(encode(['string'], ['ORDER_LIST']))
+
+            print(f"\n📊 Querying DataStore for active orders...")
+            print(f"   ORDER_LIST key: {ORDER_LIST.hex()}")
+
+            # Get count of orders in the ORDER_LIST
+            order_count = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self.datastore.functions.getBytes32Count(ORDER_LIST).call()
+            )
+
+            print(f"   Total orders in system: {order_count}")
+
+            if order_count == 0:
+                print(f"\n✅ No pending orders to recover")
+                print("=" * 60 + "\n")
+                return
+
+            print(f"\n📥 Recovering {order_count} order(s)...\n")
+
+            # Fetch all order keys in parallel (batch by 10 to avoid RPC limits)
+            BATCH_SIZE = 10
+            all_order_keys = []
+
+            for i in range(0, order_count, BATCH_SIZE):
+                end_index = min(i + BATCH_SIZE, order_count)
+
+                # Fetch batch of order keys
+                order_keys = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda start=i, end=end_index: self.datastore.functions.getBytes32ValuesAt(
+                        ORDER_LIST, start, end
+                    ).call()
+                )
+
+                all_order_keys.extend(order_keys)
+                print(f"   Fetched order keys {i+1}-{end_index}")
+
+            print(f"\n🔍 Processing {len(all_order_keys)} orders silently in background...\n")
+
+            # Track recovery stats
+            recovered_market = 0
+            recovered_conditional = 0
+            skipped_frozen = 0
+            skipped_executing = 0
+            skipped_invalid = 0
+            skipped_old = 0
+            failed_fetch = 0
+
+            # Fetch and classify each order in parallel
+            async def process_order(order_key_bytes):
+                """Process a single recovered order"""
+                nonlocal recovered_market, recovered_conditional, skipped_frozen
+                nonlocal skipped_executing, skipped_invalid, skipped_old, failed_fetch
+
+                # Convert bytes32 to hex string
+                order_key = order_key_bytes.hex() if isinstance(order_key_bytes, bytes) else order_key_bytes
+                if not order_key.startswith('0x'):
+                    order_key = '0x' + order_key
+
+                # Check if already being tracked (deduplication)
+                if order_key in self.market_orders or order_key in self.conditional_orders or order_key in self.executing_orders:
+                    skipped_executing += 1
+                    return
+
+                # Fetch order details (SILENT mode - no logs)
+                order = await self.fetch_order_details(order_key, silent=True)
+
+                if not order:
+                    failed_fetch += 1
+                    return
+
+                # Skip orders created before cutoff date
+                order_timestamp = order.get('updatedAtTime', 0)
+                if order_timestamp < CUTOFF_TIMESTAMP:
+                    skipped_old += 1
+                    return
+
+                # Skip frozen orders (silent)
+                if order.get('isFrozen', False):
+                    skipped_frozen += 1
+                    return
+
+                # Classify and queue the order (silent)
+                order_class = self.classify_order(order)
+
+                if order_class == 'MARKET':
+                    self.market_orders[order_key] = order
+                    recovered_market += 1
+
+                elif order_class == 'CONDITIONAL':
+                    self.conditional_orders[order_key] = order
+                    recovered_conditional += 1
+
+                elif order_class == 'INVALID':
+                    skipped_invalid += 1
+
+            # Process all orders in parallel (with rate limiting)
+            CONCURRENT_LIMIT = 5  # Process 5 orders at a time to avoid overwhelming RPC
+
+            for i in range(0, len(all_order_keys), CONCURRENT_LIMIT):
+                batch = all_order_keys[i:i+CONCURRENT_LIMIT]
+                await asyncio.gather(*[process_order(order_key) for order_key in batch])
+
+            # Print recovery summary
+            print("\n" + "=" * 60)
+            print("📊 RECOVERY SUMMARY")
+            print("=" * 60)
+            print(f"   ⚡ Market orders recovered: {recovered_market}")
+            print(f"   ⏱️  Conditional orders recovered: {recovered_conditional}")
+            print(f"   📅 Old orders skipped (before {CUTOFF_DATE.strftime('%b %d, %Y')}): {skipped_old}")
+            print(f"   ⏸️  Frozen orders skipped: {skipped_frozen}")
+            print(f"   🔄 Already executing orders skipped: {skipped_executing}")
+            print(f"   ⚠️  Invalid orders skipped: {skipped_invalid}")
+            print(f"   ❌ Failed to fetch: {failed_fetch}")
+            print(f"   ✅ Total recovered: {recovered_market + recovered_conditional}")
+            print("=" * 60 + "\n")
+
+            # If we recovered market orders, process them
+            if recovered_market > 0:
+                print(f"⚡ Processing {recovered_market} recovered market order(s)...\n")
+                await self.process_market_orders()
+
+        except Exception as e:
+            print(f"\n❌ Error during order recovery: {e}")
+            import traceback
+            traceback.print_exc()
+            print("\n⚠️  Continuing without recovery - will rely on WebSocket events\n")
 
     def classify_order(self, order):
         """Classify order as market (immediate execution) or conditional (wait for trigger)"""
 
         order_type = order.get('orderType', 0)
+
+        # Skip orders with invalid market address (malformed liquidation swap orders)
+        market_address = order.get('market', '0x0000000000000000000000000000000000000000')
+        if market_address == '0x0000000000000000000000000000000000000000':
+            print(f"   ⚠️  Skipping order with invalid market address (likely malformed liquidation swap)")
+            return 'INVALID'
 
         # Market orders - execute immediately
         market_types = [
@@ -798,7 +1479,7 @@ class OrderKeeper:
             return False
 
         # Convert prices to same precision for comparison
-        trigger_price_float = trigger_price / 10**30
+        trigger_price_float = trigger_price / 10**12
         current_price_float = current_price
 
         # Limit Increase: Enter position when price is favorable
@@ -1105,6 +1786,13 @@ class OrderKeeper:
                 # Wait for next price update from queue
                 pair, price = await self.price_update_queue.get()
 
+                # Notify liquidation monitor of price update
+                await self.liquidation_monitor.on_price_update(pair, price)
+
+                # Debug: Show price update and conditional orders
+                print(f"\n💰 Price Update: {pair} = {price:.4f}")
+                print(f"   Conditional orders count: {len(self.conditional_orders)}")
+
                 # Skip if no conditional orders to check
                 if not self.conditional_orders:
                     continue
@@ -1113,7 +1801,21 @@ class OrderKeeper:
                 orders_to_check = []
                 for order_key, order in list(self.conditional_orders.items()):
                     order_market = order['market']
-                    order_pair = self.MARKET_PAIR_MAPPING.get(order_market)
+                    # Normalize address to lowercase for comparison
+                    order_market_lower = order_market.lower() if order_market else None
+
+                    # Try to find matching market (case-insensitive)
+                    order_pair = None
+                    for market_addr, pair_name in self.MARKET_PAIR_MAPPING.items():
+                        if market_addr.lower() == order_market_lower:
+                            order_pair = pair_name
+                            break
+
+                    # Debug: Show market mapping lookup
+                    print(f"   🔍 Order {order_key[:10]}... market={order_market}")
+                    print(f"      Mapped to pair: {order_pair}")
+                    print(f"      Trigger price: {order.get('triggerPrice', 0) / 10**12:.4f}")
+                    print(f"      Is long: {order.get('isLong')}")
 
                     # Only check orders for the updated pair
                     if order_pair == pair:
@@ -1142,7 +1844,7 @@ class OrderKeeper:
                     print(f"   Pair: {pair}")
                     print(f"   Order Key: {order_key}")
                     print(f"   Type: {order['orderTypeName']}")
-                    print(f"   Trigger Price: {order['triggerPrice'] / 10**30:.4f}")
+                    print(f"   Trigger Price: {order['triggerPrice'] / 10**12:.4f}")
                     print(f"   Current Price: {price:.4f}")
 
                     # Remove from conditional orders
@@ -1178,6 +1880,12 @@ class OrderKeeper:
         print(f"   Block: {int(event_data['blockNumber'], 16)}")
         print(f"   TX: {event_data['transactionHash']}")
 
+        # Deduplication: Check if order is already being tracked
+        if order_key in self.market_orders or order_key in self.conditional_orders or order_key in self.executing_orders:
+            print(f"   ℹ️  Order already being tracked (recovered from blockchain)")
+            print("-" * 60)
+            return
+
         # Fetch full order details from DataStore
         order = await self.fetch_order_details(order_key)
 
@@ -1201,14 +1909,14 @@ class OrderKeeper:
                 # Display trigger conditions
                 if order['orderType'] == OrderType.LimitIncrease.value:
                     if order['isLong']:
-                        print(f"   📈 Will execute when price <= {order['triggerPrice'] / 10**30:.4f}")
+                        print(f"   📈 Will execute when price <= {order['triggerPrice'] / 10**12:.4f}")
                     else:
-                        print(f"   📉 Will execute when price >= {order['triggerPrice'] / 10**30:.4f}")
+                        print(f"   📉 Will execute when price >= {order['triggerPrice'] / 10**12:.4f}")
                 elif order['orderType'] == OrderType.StopLossDecrease.value:
                     if order['isLong']:
-                        print(f"   🛑 Stop loss will trigger when price <= {order['triggerPrice'] / 10**30:.4f}")
+                        print(f"   🛑 Stop loss will trigger when price <= {order['triggerPrice'] / 10**12:.4f}")
                     else:
-                        print(f"   🛑 Stop loss will trigger when price >= {order['triggerPrice'] / 10**30:.4f}")
+                        print(f"   🛑 Stop loss will trigger when price >= {order['triggerPrice'] / 10**12:.4f}")
 
                 print("   📝 Added to conditional orders watch list")
 
@@ -1347,48 +2055,88 @@ class OrderKeeper:
                     print(f"❌ Error handling message: {e}")
 
     async def run(self):
-        """Main entry point for the keeper"""
+        """Main entry point for the keeper - true non-blocking approach"""
 
         print("=" * 60)
         print("       ORDER KEEPER V2 - CRYPTO + STOCKS")
         print("=" * 60)
 
-        # Connect to crypto price feed
-        try:
-            await self.crypto_feed.connect()
-        except Exception as e:
-            print(f"❌ Failed to connect to crypto price feed: {e}")
-            print("   Continuing without live crypto prices (using fallback)")
+        # STEP 1: Connect to price feeds FIRST (critical dependency)
+        print("\n🔌 Connecting to price feeds...")
 
-        # Connect to stock price feed (if configured)
-        if self.stock_feed:
+        async def connect_crypto_feed():
+            try:
+                await self.crypto_feed.connect()
+                print("   ✅ Crypto price feed connected")
+            except Exception as e:
+                print(f"   ❌ Crypto price feed failed: {e}")
+
+        async def connect_stock_feed():
             try:
                 await self.stock_feed.connect()
+                asyncio.create_task(self.stock_feed.log_prices_periodically())
+                print("   ✅ Stock price feed connected")
             except Exception as e:
-                print(f"❌ Failed to connect to stock price feed: {e}")
-                print("   Continuing without stock prices")
+                print(f"   ❌ Stock price feed failed: {e}")
 
-        # Start conditional order monitor as background task
-        monitor_task = asyncio.create_task(self.monitor_conditional_orders())
+        # Connect both feeds in parallel
+        await asyncio.gather(
+            connect_crypto_feed(),
+            connect_stock_feed()
+        )
 
-        # Run blockchain listener
-        while True:
+        print("\n🚀 Starting keeper services...")
+
+        # STEP 2: Start ALL background services in parallel (truly non-blocking)
+        async def run_recovery():
+            """Background order recovery"""
             try:
-                # Main blockchain event listener
-                await self.connect_and_subscribe()
-            except KeyboardInterrupt:
-                print("\n👋 Shutting down...")
-                # Cancel monitor task
-                monitor_task.cancel()
-                # Disconnect price feeds
-                await self.crypto_feed.disconnect()
-                if self.stock_feed:
-                    await self.stock_feed.disconnect()
-                break
+                await self.recover_orders()
             except Exception as e:
-                print(f"❌ Unexpected error: {e}")
-                print("⏳ Retrying in 5 seconds...")
-                await asyncio.sleep(5)
+                print(f"❌ Recovery error: {e}")
+
+        async def run_websocket():
+            """Main WebSocket listener with reconnection"""
+            while True:
+                try:
+                    await self.connect_and_subscribe()
+                except KeyboardInterrupt:
+                    raise
+                except Exception as e:
+                    print(f"❌ WebSocket error: {e}")
+                    print("⏳ Reconnecting in 5 seconds...")
+                    await asyncio.sleep(5)
+
+        # Create all tasks
+        recovery_task = asyncio.create_task(run_recovery())
+        monitor_task = asyncio.create_task(self.monitor_conditional_orders())
+        liquidation_task = asyncio.create_task(self.liquidation_monitor.monitor_loop())
+        websocket_task = asyncio.create_task(run_websocket())
+
+        print("   ✅ Order recovery (background)")
+        print("   ✅ Conditional order monitor")
+        print("   ✅ Liquidation monitor")
+        print("   ✅ WebSocket event listener")
+        print("\n👂 Keeper is ready - listening for orders...\n")
+
+        # Wait for all tasks (or until interrupted)
+        try:
+            await asyncio.gather(
+                recovery_task,
+                monitor_task,
+                liquidation_task,
+                websocket_task
+            )
+        except KeyboardInterrupt:
+            print("\n👋 Shutting down...")
+            # Cancel all tasks
+            recovery_task.cancel()
+            monitor_task.cancel()
+            liquidation_task.cancel()
+            websocket_task.cancel()
+            # Disconnect price feeds
+            await self.crypto_feed.disconnect()
+            await self.stock_feed.disconnect()
 
 
 async def main():

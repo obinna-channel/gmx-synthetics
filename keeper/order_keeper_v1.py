@@ -175,7 +175,7 @@ class OrderKeeper:
             print(f"     Account: {order['account']}")
             print(f"     Size Delta USD: {order['sizeDeltaUsd'] / 10**30:.2f}")
             print(f"     Is Long: {order['isLong']}")
-            print(f"     Trigger Price: {order['triggerPrice'] / 10**30:.4f}" if order['triggerPrice'] > 0 else "     Trigger Price: N/A (Market Order)")
+            print(f"     Trigger Price: {order['triggerPrice'] / 10**12:.4f}" if order['triggerPrice'] > 0 else "     Trigger Price: N/A (Market Order)")
             print(f"     Is Frozen: {order['isFrozen']}")
 
             return order
@@ -256,14 +256,14 @@ class OrderKeeper:
                 # Display trigger conditions
                 if order['orderType'] == OrderType.LimitIncrease.value:
                     if order['isLong']:
-                        print(f"   📈 Will execute when price <= {order['triggerPrice'] / 10**30:.4f}")
+                        print(f"   📈 Will execute when price <= {order['triggerPrice'] / 10**12:.4f}")
                     else:
-                        print(f"   📉 Will execute when price >= {order['triggerPrice'] / 10**30:.4f}")
+                        print(f"   📉 Will execute when price >= {order['triggerPrice'] / 10**12:.4f}")
                 elif order['orderType'] == OrderType.StopLossDecrease.value:
                     if order['isLong']:
-                        print(f"   🛑 Stop loss will trigger when price <= {order['triggerPrice'] / 10**30:.4f}")
+                        print(f"   🛑 Stop loss will trigger when price <= {order['triggerPrice'] / 10**12:.4f}")
                     else:
-                        print(f"   🛑 Stop loss will trigger when price >= {order['triggerPrice'] / 10**30:.4f}")
+                        print(f"   🛑 Stop loss will trigger when price >= {order['triggerPrice'] / 10**12:.4f}")
 
                 print("   📝 Added to conditional orders watch list")
 
