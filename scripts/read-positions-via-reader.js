@@ -24,6 +24,7 @@ const ADDRESSES = {
 
 // Known accounts to check (add more as needed)
 const ACCOUNTS_TO_CHECK = [
+    "0x3Bcc96fc2A86043D228c61A5C92f401B25CECE44",
     "0xB880CBFE2fb746838719805CEcE154b58D03A79b",
     "0xBaB0D0892Bf8563B731f8e8970fE856ce9308292"
 ];

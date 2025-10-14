@@ -18,6 +18,7 @@ This deployment is a fork of GMX V2 for the Marks protocol, creating synthetic N
 | Mock Nigerian Naira | mNGN | `0x2e08218698339AFdba205312cc23dAe8c3690827` | 18 | [View on Explorer](https://sepolia.arbiscan.io/address/0x2e08218698339AFdba205312cc23dAe8c3690827) |
 | Marks USD | mUSD | `0x85bf04B07A6df0172372b959C1C73F3e90F73faf` | 6 | [View on Explorer](https://sepolia.arbiscan.io/address/0x85bf04B07A6df0172372b959C1C73F3e90F73faf) |
 | USDT/NGN Index | mUSDTNGN | `0x168e829F546940AE7Ab336aF4Bd95d07f7f6cE73` | 18 | [View on Explorer](https://sepolia.arbiscan.io/address/0x168e829F546940AE7Ab336aF4Bd95d07f7f6cE73) |
+| TSLA Stock Index | mTSLA | `0x77d4DdD2E847592fb7710e342C0492A4b85655f4` | 18 | [View on Explorer](https://sepolia.arbiscan.io/address/0x77d4DdD2E847592fb7710e342C0492A4b85655f4) |
 
 ## Markets
 

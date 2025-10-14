@@ -34,7 +34,8 @@ const OrderTypes = {
     MarketDecrease: 4,
     LimitDecrease: 5,
     StopLossDecrease: 6,
-    Liquidation: 7
+    Liquidation: 7,
+    StopIncrease: 8
 };
 
 function printUsage() {
@@ -44,43 +45,83 @@ ${colors.bright}USAGE:${colors.reset}
 
 ${colors.bright}ACTIONS:${colors.reset}
   ${colors.cyan}check${colors.reset}              Check current position status
-  ${colors.cyan}open${colors.reset}               Open a new position
-  ${colors.cyan}increase${colors.reset}           Increase an existing position
-  ${colors.cyan}decrease${colors.reset}           Decrease an existing position
-  ${colors.cyan}close${colors.reset}              Close entire position
+
+  ${colors.bright}Opening Positions:${colors.reset}
+  ${colors.cyan}open${colors.reset}               Open position at market price
+  ${colors.cyan}limit-open${colors.reset}         Open position with limit order (buy dip/sell rip)
+  ${colors.cyan}stop-open${colors.reset}          Open position with stop order (buy breakout/sell breakdown)
+
+  ${colors.bright}Managing Positions:${colors.reset}
+  ${colors.cyan}increase${colors.reset}           Increase existing position at market price
+  ${colors.cyan}decrease${colors.reset}           Decrease existing position at market price
+  ${colors.cyan}close${colors.reset}              Close entire position at market price
+  ${colors.cyan}set-tp${colors.reset}             Set take-profit order (limit decrease)
+  ${colors.cyan}set-sl${colors.reset}             Set stop-loss order
+
+  ${colors.bright}Other:${colors.reset}
   ${colors.cyan}set-price${colors.reset}          Update oracle prices
 
 ${colors.bright}OPTIONS (as environment variables):${colors.reset}
-  SIDE=<long|short>      Position side (required for open/increase/decrease/close)
-  SIZE=<number>          Size in USD (required for open/increase)
-  COLLATERAL=<number>    Collateral in USDT (required for open/increase)
-  PERCENT=<number>       Percentage to close (for decrease, default: 50)
-  AMOUNT=<number>        Specific USD amount to decrease
-  TOKEN=<USDT|sNGN>      Token for price update
-  PRICE=<number>         New price in USD
+  SIDE=<long|short>         Position side (required for most actions)
+  SIZE=<number>             Size in USD (required for open/increase)
+  COLLATERAL=<number>       Collateral in USDT (required for open/increase)
+  TRIGGER_PRICE=<number>    Trigger price in NGN per USDT (required for limit/stop orders)
+  TP_PRICE=<number>         Take-profit price in NGN per USDT (optional for open/increase)
+  SL_PRICE=<number>         Stop-loss price in NGN per USDT (optional for open/increase)
+  PERCENT=<number>          Percentage to close (for decrease/set-tp/set-sl, default: 100)
+  AMOUNT=<number>           Specific USD amount to decrease
+  TOKEN=<USDT|sNGN>         Token for price update
+  PRICE=<number>            New price in USD
 
 ${colors.bright}EXAMPLES:${colors.reset}
   # Check current positions
   ACTION=check npx hardhat run scripts/test-market-orders.js --network arbitrumSepolia
 
-  # Open a long position
+  ${colors.bright}Market Orders:${colors.reset}
+  # Open a long position at market
   ACTION=open SIDE=long SIZE=100 COLLATERAL=100 npx hardhat run scripts/test-market-orders.js --network arbitrumSepolia
 
-  # Open a short position
-  ACTION=open SIDE=short SIZE=50 COLLATERAL=50 npx hardhat run scripts/test-market-orders.js --network arbitrumSepolia
+  # Open a short position at market with TP and SL
+  ACTION=open SIDE=short SIZE=50 COLLATERAL=50 TP_PRICE=4500 SL_PRICE=5500 npx hardhat run scripts/test-market-orders.js --network arbitrumSepolia
 
-  # Increase a position
+  ${colors.bright}Limit Orders (Entry):${colors.reset}
+  # Open long when price dips to 4500 NGN per USDT with TP/SL
+  ACTION=limit-open SIDE=long SIZE=100 COLLATERAL=100 TRIGGER_PRICE=4500 TP_PRICE=5000 SL_PRICE=4200 npx hardhat run scripts/test-market-orders.js --network arbitrumSepolia
+
+  # Open short when price rips to 5500 NGN per USDT (no TP/SL)
+  ACTION=limit-open SIDE=short SIZE=50 COLLATERAL=50 TRIGGER_PRICE=5500 npx hardhat run scripts/test-market-orders.js --network arbitrumSepolia
+
+  ${colors.bright}Stop Orders (Entry):${colors.reset}
+  # Open long on breakout above 5500 NGN per USDT with TP/SL
+  ACTION=stop-open SIDE=long SIZE=100 COLLATERAL=100 TRIGGER_PRICE=5500 TP_PRICE=6000 SL_PRICE=5200 npx hardhat run scripts/test-market-orders.js --network arbitrumSepolia
+
+  # Open short on breakdown below 4500 NGN per USDT (no TP/SL)
+  ACTION=stop-open SIDE=short SIZE=50 COLLATERAL=50 TRIGGER_PRICE=4500 npx hardhat run scripts/test-market-orders.js --network arbitrumSepolia
+
+  ${colors.bright}Take Profit & Stop Loss:${colors.reset}
+  # Set take-profit at 5500 NGN per USDT (full position)
+  ACTION=set-tp SIDE=long TRIGGER_PRICE=5500 npx hardhat run scripts/test-market-orders.js --network arbitrumSepolia
+
+  # Set take-profit at 4500 NGN per USDT for 50% of position
+  ACTION=set-tp SIDE=short TRIGGER_PRICE=4500 PERCENT=50 npx hardhat run scripts/test-market-orders.js --network arbitrumSepolia
+
+  # Set stop-loss at 4500 NGN per USDT (full position)
+  ACTION=set-sl SIDE=long TRIGGER_PRICE=4500 npx hardhat run scripts/test-market-orders.js --network arbitrumSepolia
+
+  # Set stop-loss at 5500 NGN per USDT for $25
+  ACTION=set-sl SIDE=short TRIGGER_PRICE=5500 AMOUNT=25 npx hardhat run scripts/test-market-orders.js --network arbitrumSepolia
+
+  ${colors.bright}Position Management:${colors.reset}
+  # Increase a position at market
   ACTION=increase SIDE=long SIZE=50 COLLATERAL=50 npx hardhat run scripts/test-market-orders.js --network arbitrumSepolia
 
-  # Decrease 50% of position
+  # Decrease 50% of position at market
   ACTION=decrease SIDE=long PERCENT=50 npx hardhat run scripts/test-market-orders.js --network arbitrumSepolia
 
-  # Decrease specific amount
-  ACTION=decrease SIDE=short AMOUNT=25 npx hardhat run scripts/test-market-orders.js --network arbitrumSepolia
-
-  # Close entire position
+  # Close entire position at market
   ACTION=close SIDE=long npx hardhat run scripts/test-market-orders.js --network arbitrumSepolia
 
+  ${colors.bright}Oracle:${colors.reset}
   # Update oracle price
   ACTION=set-price TOKEN=USDT PRICE=1.05 npx hardhat run scripts/test-market-orders.js --network arbitrumSepolia
 `);
@@ -97,7 +138,10 @@ function parseArgs() {
         percent: process.env.PERCENT,
         amount: process.env.AMOUNT,
         token: process.env.TOKEN,
-        price: process.env.PRICE
+        price: process.env.PRICE,
+        triggerPrice: process.env.TRIGGER_PRICE,
+        tpPrice: process.env.TP_PRICE,
+        slPrice: process.env.SL_PRICE
     };
 
     // Remove undefined values
@@ -188,13 +232,15 @@ async function createOrder(signer, orderType, orderParams) {
     );
 
     // 2. For increase orders, approve and send USDT
-    if (orderType === OrderTypes.MarketIncrease && orderParams.collateralAmount) {
-        // Check and approve USDT
+    const isIncreaseOrder = [OrderTypes.MarketIncrease, OrderTypes.LimitIncrease, OrderTypes.StopIncrease].includes(orderType);
+    if (isIncreaseOrder && orderParams.collateralAmount) {
+        // Check and approve USDT (one-time large approval)
         const allowance = await usdt.allowance(signer.address, ADDRESSES.ROUTER);
+        const largeApproval = ethers.utils.parseUnits("1000000", 6); // 1M USDT
         if (allowance.lt(orderParams.collateralAmount)) {
-            console.log(`  ${colors.yellow}Approving USDT...${colors.reset}`);
+            console.log(`  ${colors.yellow}Approving 1M USDT (one-time)...${colors.reset}`);
             await (await usdt.approve(ADDRESSES.ROUTER, 0)).wait();
-            await (await usdt.approve(ADDRESSES.ROUTER, orderParams.collateralAmount)).wait();
+            await (await usdt.approve(ADDRESSES.ROUTER, largeApproval)).wait();
         }
 
         multicallData.push(
@@ -209,7 +255,8 @@ async function createOrder(signer, orderType, orderParams) {
     // 3. Create order
     // For decrease orders with short positions, we need to swap PnL token to collateral token
     let decreasePositionSwapType = 0; // NoSwap by default
-    if (orderType === OrderTypes.MarketDecrease && !orderParams.isLong) {
+    const isDecreaseOrder = [OrderTypes.MarketDecrease, OrderTypes.LimitDecrease, OrderTypes.StopLossDecrease].includes(orderType);
+    if (isDecreaseOrder && !orderParams.isLong) {
         // For short positions, swap sNGN (PnL token) to USDT (collateral token)
         decreasePositionSwapType = 1; // SwapPnlTokenToCollateralToken
     }
@@ -227,7 +274,7 @@ async function createOrder(signer, orderType, orderParams) {
         numbers: {
             sizeDeltaUsd: orderParams.sizeDeltaUsd,
             initialCollateralDeltaAmount: orderParams.collateralAmount || 0,
-            triggerPrice: 0,
+            triggerPrice: orderParams.triggerPrice || 0,
             acceptablePrice: orderParams.acceptablePrice || 0,
             executionFee: executionFee,
             callbackGasLimit: 0,
@@ -280,6 +327,106 @@ async function createOrder(signer, orderType, orderParams) {
     return receipt;
 }
 
+async function setTPSLIfProvided(signer, options) {
+    const { side, tpPrice, slPrice } = options;
+
+    if (!tpPrice && !slPrice) {
+        return; // Nothing to do
+    }
+
+    const isLong = side === 'long';
+
+    // Check if position exists before setting TP/SL
+    const dataStore = await ethers.getContractAt("DataStore", ADDRESSES.DATA_STORE);
+    const positionKey = ethers.utils.keccak256(
+        ethers.utils.defaultAbiCoder.encode(
+            ["address", "address", "address", "bool"],
+            [signer.address, ADDRESSES.MARKET, ADDRESSES.USDT, isLong]
+        )
+    );
+
+    const POSITION_LIST = ethers.utils.keccak256(
+        ethers.utils.defaultAbiCoder.encode(["string"], ["POSITION_LIST"])
+    );
+
+    // Poll for position to exist (wait up to 30 seconds)
+    console.log(`\n${colors.yellow}Waiting for position to be created...${colors.reset}`);
+    let positionExists = false;
+    for (let i = 0; i < 30; i++) {
+        positionExists = await dataStore.containsBytes32(POSITION_LIST, positionKey);
+        if (positionExists) {
+            console.log(`${colors.green}✅ Position created!${colors.reset}`);
+            break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+        process.stdout.write('.');
+    }
+
+    if (!positionExists) {
+        console.log(`\n${colors.red}Position not created within 30 seconds. TP/SL orders not set.${colors.reset}`);
+        return;
+    }
+
+    // Get position size and collateral for TP/SL orders
+    const sizeKey = ethers.utils.keccak256(
+        ethers.utils.defaultAbiCoder.encode(
+            ["bytes32", "bytes32"],
+            [positionKey, ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode(["string"], ["SIZE_IN_USD"]))]
+        )
+    );
+    const currentSize = await dataStore.getUint(sizeKey);
+
+    const collateralKey = ethers.utils.keccak256(
+        ethers.utils.defaultAbiCoder.encode(
+            ["bytes32", "bytes32"],
+            [positionKey, ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode(["string"], ["COLLATERAL_AMOUNT"]))]
+        )
+    );
+    const currentCollateral = await dataStore.getUint(collateralKey);
+
+    // Set Take Profit if provided
+    if (tpPrice) {
+        console.log(`\n${colors.bright}Setting Take-Profit at ${tpPrice} NGN per USDT...${colors.reset}`);
+        const triggerPriceFormatted = ethers.utils.parseUnits(tpPrice, 24);
+
+        let acceptablePrice;
+        if (isLong) {
+            acceptablePrice = 0;
+        } else {
+            acceptablePrice = triggerPriceFormatted;
+        }
+
+        await createOrder(signer, OrderTypes.LimitDecrease, {
+            sizeDeltaUsd: currentSize,
+            collateralAmount: currentCollateral,
+            isLong,
+            triggerPrice: triggerPriceFormatted,
+            acceptablePrice
+        });
+    }
+
+    // Set Stop Loss if provided
+    if (slPrice) {
+        console.log(`\n${colors.bright}Setting Stop-Loss at ${slPrice} NGN per USDT...${colors.reset}`);
+        const triggerPriceFormatted = ethers.utils.parseUnits(slPrice, 24);
+
+        let acceptablePrice;
+        if (isLong) {
+            acceptablePrice = 0;
+        } else {
+            acceptablePrice = triggerPriceFormatted;
+        }
+
+        await createOrder(signer, OrderTypes.StopLossDecrease, {
+            sizeDeltaUsd: currentSize,
+            collateralAmount: currentCollateral,
+            isLong,
+            triggerPrice: triggerPriceFormatted,
+            acceptablePrice
+        });
+    }
+}
+
 async function openPosition(signer, options) {
     const { side, size, collateral } = options;
 
@@ -306,7 +453,7 @@ async function openPosition(signer, options) {
         console.log(`  ${colors.cyan}Setting acceptablePrice to 5000 NGN per USDT for long open${colors.reset}`);
     } else {
         // For opening shorts, use 0 (like create-flexible-order.js)
-        acceptablePrice = 0;
+        acceptablePrice = ethers.utils.parseUnits("0", 24); // 5000 with 24 decimals (30 - 6 for USDT);
         console.log(`  ${colors.cyan}Setting acceptablePrice to 0 for short open${colors.reset}`);
     }
 
@@ -316,6 +463,9 @@ async function openPosition(signer, options) {
         isLong,
         acceptablePrice
     });
+
+    // Set TP/SL if provided
+    await setTPSLIfProvided(signer, options);
 }
 
 async function increasePosition(signer, options) {
@@ -373,6 +523,9 @@ async function increasePosition(signer, options) {
         isLong,
         acceptablePrice
     });
+
+    // Set TP/SL if provided (only if position was just created, not increased)
+    await setTPSLIfProvided(signer, options);
 }
 
 async function decreasePosition(signer, options) {
@@ -570,6 +723,284 @@ async function setPrice(signer, options) {
     console.log(`${colors.green}✅ Price updated!${colors.reset}`);
 }
 
+async function limitOpenPosition(signer, options) {
+    const { side, size, collateral, triggerPrice } = options;
+
+    if (!side || !size || !collateral || !triggerPrice) {
+        console.log(`${colors.red}Error: Missing required options for limit-open${colors.reset}`);
+        console.log("Required: SIDE=<long|short> SIZE=<number> COLLATERAL=<number> TRIGGER_PRICE=<number>");
+        return;
+    }
+
+    const isLong = side === 'long';
+    const sizeDeltaUsd = ethers.utils.parseUnits(size, 30);
+    const collateralAmount = ethers.utils.parseUnits(collateral, 6);
+    const triggerPriceFormatted = ethers.utils.parseUnits(triggerPrice, 24); // 30 - 6 decimals for USDT
+
+    console.log(`\n${colors.bright}Opening ${side.toUpperCase()} Position (Limit Order):${colors.reset}`);
+    console.log(`  Size: ${colors.green}$${size}${colors.reset}`);
+    console.log(`  Collateral: ${colors.yellow}${collateral} USDT${colors.reset}`);
+    console.log(`  Leverage: ${colors.magenta}${(size / collateral).toFixed(1)}x${colors.reset}`);
+    console.log(`  Trigger Price: ${colors.cyan}${triggerPrice} NGN per USDT${colors.reset}`);
+
+    // Set acceptablePrice based on side
+    let acceptablePrice;
+    if (isLong) {
+        // For limit longs, we want to buy when price goes down
+        // acceptablePrice should be lower than trigger (worst acceptable price)
+        acceptablePrice = triggerPriceFormatted;
+        console.log(`  ${colors.cyan}Acceptable Price: ${triggerPrice} NGN per USDT (buy on dip)${colors.reset}`);
+    } else {
+        // For limit shorts, we want to sell when price goes up
+        // acceptablePrice should be higher than trigger
+        acceptablePrice = triggerPriceFormatted;
+        console.log(`  ${colors.cyan}Acceptable Price: ${triggerPrice} NGN per USDT (sell on rip)${colors.reset}`);
+    }
+
+    await createOrder(signer, OrderTypes.LimitIncrease, {
+        sizeDeltaUsd,
+        collateralAmount,
+        isLong,
+        triggerPrice: triggerPriceFormatted,
+        acceptablePrice
+    });
+
+    // Set TP/SL if provided
+    await setTPSLIfProvided(signer, options);
+}
+
+async function stopOpenPosition(signer, options) {
+    const { side, size, collateral, triggerPrice } = options;
+
+    if (!side || !size || !collateral || !triggerPrice) {
+        console.log(`${colors.red}Error: Missing required options for stop-open${colors.reset}`);
+        console.log("Required: SIDE=<long|short> SIZE=<number> COLLATERAL=<number> TRIGGER_PRICE=<number>");
+        return;
+    }
+
+    const isLong = side === 'long';
+    const sizeDeltaUsd = ethers.utils.parseUnits(size, 30);
+    const collateralAmount = ethers.utils.parseUnits(collateral, 6);
+    const triggerPriceFormatted = ethers.utils.parseUnits(triggerPrice, 24); // 30 - 6 decimals for USDT
+
+    console.log(`\n${colors.bright}Opening ${side.toUpperCase()} Position (Stop Order):${colors.reset}`);
+    console.log(`  Size: ${colors.green}$${size}${colors.reset}`);
+    console.log(`  Collateral: ${colors.yellow}${collateral} USDT${colors.reset}`);
+    console.log(`  Leverage: ${colors.magenta}${(size / collateral).toFixed(1)}x${colors.reset}`);
+    console.log(`  Trigger Price: ${colors.cyan}${triggerPrice} NGN per USDT${colors.reset}`);
+
+    // Set acceptablePrice based on side
+    let acceptablePrice;
+    if (isLong) {
+        // For stop longs, we want to buy when price breaks up
+        // acceptablePrice should be higher (allow slippage up)
+        acceptablePrice = ethers.utils.parseUnits((parseFloat(triggerPrice) * 1.01).toString(), 24); // 1% slippage
+        console.log(`  ${colors.cyan}Acceptable Price: ${(parseFloat(triggerPrice) * 1.01).toFixed(2)} NGN per USDT (buy breakout)${colors.reset}`);
+    } else {
+        // For stop shorts, we want to sell when price breaks down
+        // acceptablePrice should be lower (allow slippage down)
+        acceptablePrice = ethers.utils.parseUnits((parseFloat(triggerPrice) * 0.99).toString(), 24); // 1% slippage
+        console.log(`  ${colors.cyan}Acceptable Price: ${(parseFloat(triggerPrice) * 0.99).toFixed(2)} NGN per USDT (sell breakdown)${colors.reset}`);
+    }
+
+    await createOrder(signer, OrderTypes.StopIncrease, {
+        sizeDeltaUsd,
+        collateralAmount,
+        isLong,
+        triggerPrice: triggerPriceFormatted,
+        acceptablePrice
+    });
+
+    // Set TP/SL if provided
+    await setTPSLIfProvided(signer, options);
+}
+
+async function setTakeProfit(signer, options) {
+    const { side, triggerPrice, percent, amount } = options;
+
+    if (!side || !triggerPrice) {
+        console.log(`${colors.red}Error: Missing required options for set-tp${colors.reset}`);
+        console.log("Required: SIDE=<long|short> TRIGGER_PRICE=<number>");
+        console.log("Optional: PERCENT=<number> or AMOUNT=<number> (default: 100% - full close)");
+        return;
+    }
+
+    // Check position exists and get current size
+    const dataStore = await ethers.getContractAt("DataStore", ADDRESSES.DATA_STORE);
+    const isLong = side === 'long';
+
+    const positionKey = ethers.utils.keccak256(
+        ethers.utils.defaultAbiCoder.encode(
+            ["address", "address", "address", "bool"],
+            [signer.address, ADDRESSES.MARKET, ADDRESSES.USDT, isLong]
+        )
+    );
+
+    const POSITION_LIST = ethers.utils.keccak256(
+        ethers.utils.defaultAbiCoder.encode(["string"], ["POSITION_LIST"])
+    );
+
+    const positionExists = await dataStore.containsBytes32(POSITION_LIST, positionKey);
+    if (!positionExists) {
+        console.log(`${colors.red}No ${side} position exists to set take-profit${colors.reset}`);
+        return;
+    }
+
+    // Get current position size and collateral
+    const sizeKey = ethers.utils.keccak256(
+        ethers.utils.defaultAbiCoder.encode(
+            ["bytes32", "bytes32"],
+            [positionKey, ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode(["string"], ["SIZE_IN_USD"]))]
+        )
+    );
+    const currentSize = await dataStore.getUint(sizeKey);
+
+    const collateralKey = ethers.utils.keccak256(
+        ethers.utils.defaultAbiCoder.encode(
+            ["bytes32", "bytes32"],
+            [positionKey, ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode(["string"], ["COLLATERAL_AMOUNT"]))]
+        )
+    );
+    const currentCollateral = await dataStore.getUint(collateralKey);
+
+    let sizeDeltaUsd;
+    let collateralToWithdraw;
+    if (percent) {
+        sizeDeltaUsd = currentSize.mul(percent).div(100);
+        collateralToWithdraw = currentCollateral.mul(percent).div(100);
+        console.log(`\n${colors.bright}Setting Take-Profit for ${side.toUpperCase()} (${percent}%):${colors.reset}`);
+    } else if (amount) {
+        sizeDeltaUsd = ethers.utils.parseUnits(amount, 30);
+        collateralToWithdraw = currentCollateral.mul(sizeDeltaUsd).div(currentSize);
+        console.log(`\n${colors.bright}Setting Take-Profit for ${side.toUpperCase()} ($${amount}):${colors.reset}`);
+    } else {
+        // Default to full close
+        sizeDeltaUsd = currentSize;
+        collateralToWithdraw = currentCollateral;
+        console.log(`\n${colors.bright}Setting Take-Profit for ${side.toUpperCase()} (Full Close):${colors.reset}`);
+    }
+
+    console.log(`  Current Size: ${colors.yellow}$${ethers.utils.formatUnits(currentSize, 30)}${colors.reset}`);
+    console.log(`  TP Size: ${colors.green}$${ethers.utils.formatUnits(sizeDeltaUsd, 30)}${colors.reset}`);
+    console.log(`  Trigger Price: ${colors.cyan}${triggerPrice} NGN per USDT${colors.reset}`);
+
+    const triggerPriceFormatted = ethers.utils.parseUnits(triggerPrice, 24);
+
+    // Set acceptablePrice based on position type
+    let acceptablePrice;
+    if (isLong) {
+        // For long TP, we want to sell when price goes up, acceptable price is trigger or lower
+        acceptablePrice = 0; // Accept any price
+        console.log(`  ${colors.cyan}Setting acceptablePrice to 0 for long TP${colors.reset}`);
+    } else {
+        console.log(`  ${colors.cyan}Note: Using swap for SHORT position (sNGN → USDT)${colors.reset}`);
+        // For short TP, we want to buy back when price goes down
+        acceptablePrice = triggerPriceFormatted;
+        console.log(`  ${colors.cyan}Setting acceptablePrice to ${triggerPrice} NGN per USDT for short TP${colors.reset}`);
+    }
+
+    await createOrder(signer, OrderTypes.LimitDecrease, {
+        sizeDeltaUsd,
+        collateralAmount: collateralToWithdraw,
+        isLong,
+        triggerPrice: triggerPriceFormatted,
+        acceptablePrice
+    });
+}
+
+async function setStopLoss(signer, options) {
+    const { side, triggerPrice, percent, amount } = options;
+
+    if (!side || !triggerPrice) {
+        console.log(`${colors.red}Error: Missing required options for set-sl${colors.reset}`);
+        console.log("Required: SIDE=<long|short> TRIGGER_PRICE=<number>");
+        console.log("Optional: PERCENT=<number> or AMOUNT=<number> (default: 100% - full close)");
+        return;
+    }
+
+    // Check position exists and get current size
+    const dataStore = await ethers.getContractAt("DataStore", ADDRESSES.DATA_STORE);
+    const isLong = side === 'long';
+
+    const positionKey = ethers.utils.keccak256(
+        ethers.utils.defaultAbiCoder.encode(
+            ["address", "address", "address", "bool"],
+            [signer.address, ADDRESSES.MARKET, ADDRESSES.USDT, isLong]
+        )
+    );
+
+    const POSITION_LIST = ethers.utils.keccak256(
+        ethers.utils.defaultAbiCoder.encode(["string"], ["POSITION_LIST"])
+    );
+
+    const positionExists = await dataStore.containsBytes32(POSITION_LIST, positionKey);
+    if (!positionExists) {
+        console.log(`${colors.red}No ${side} position exists to set stop-loss${colors.reset}`);
+        return;
+    }
+
+    // Get current position size and collateral
+    const sizeKey = ethers.utils.keccak256(
+        ethers.utils.defaultAbiCoder.encode(
+            ["bytes32", "bytes32"],
+            [positionKey, ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode(["string"], ["SIZE_IN_USD"]))]
+        )
+    );
+    const currentSize = await dataStore.getUint(sizeKey);
+
+    const collateralKey = ethers.utils.keccak256(
+        ethers.utils.defaultAbiCoder.encode(
+            ["bytes32", "bytes32"],
+            [positionKey, ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode(["string"], ["COLLATERAL_AMOUNT"]))]
+        )
+    );
+    const currentCollateral = await dataStore.getUint(collateralKey);
+
+    let sizeDeltaUsd;
+    let collateralToWithdraw;
+    if (percent) {
+        sizeDeltaUsd = currentSize.mul(percent).div(100);
+        collateralToWithdraw = currentCollateral.mul(percent).div(100);
+        console.log(`\n${colors.bright}Setting Stop-Loss for ${side.toUpperCase()} (${percent}%):${colors.reset}`);
+    } else if (amount) {
+        sizeDeltaUsd = ethers.utils.parseUnits(amount, 30);
+        collateralToWithdraw = currentCollateral.mul(sizeDeltaUsd).div(currentSize);
+        console.log(`\n${colors.bright}Setting Stop-Loss for ${side.toUpperCase()} ($${amount}):${colors.reset}`);
+    } else {
+        // Default to full close
+        sizeDeltaUsd = currentSize;
+        collateralToWithdraw = currentCollateral;
+        console.log(`\n${colors.bright}Setting Stop-Loss for ${side.toUpperCase()} (Full Close):${colors.reset}`);
+    }
+
+    console.log(`  Current Size: ${colors.yellow}$${ethers.utils.formatUnits(currentSize, 30)}${colors.reset}`);
+    console.log(`  SL Size: ${colors.red}$${ethers.utils.formatUnits(sizeDeltaUsd, 30)}${colors.reset}`);
+    console.log(`  Trigger Price: ${colors.cyan}${triggerPrice} NGN per USDT${colors.reset}`);
+
+    const triggerPriceFormatted = ethers.utils.parseUnits(triggerPrice, 24);
+
+    // Set acceptablePrice based on position type
+    let acceptablePrice;
+    if (isLong) {
+        // For long SL, we want to sell when price goes down, acceptable price is 0 (any price)
+        acceptablePrice = 0;
+        console.log(`  ${colors.cyan}Setting acceptablePrice to 0 for long SL${colors.reset}`);
+    } else {
+        console.log(`  ${colors.cyan}Note: Using swap for SHORT position (sNGN → USDT)${colors.reset}`);
+        // For short SL, we want to buy back when price goes up, set max acceptable price
+        acceptablePrice = triggerPriceFormatted;
+        console.log(`  ${colors.cyan}Setting acceptablePrice to ${triggerPrice} NGN per USDT for short SL${colors.reset}`);
+    }
+
+    await createOrder(signer, OrderTypes.StopLossDecrease, {
+        sizeDeltaUsd,
+        collateralAmount: collateralToWithdraw,
+        isLong,
+        triggerPrice: triggerPriceFormatted,
+        acceptablePrice
+    });
+}
+
 async function main() {
     const [signer] = await ethers.getSigners();
 
@@ -594,6 +1025,12 @@ async function main() {
             case 'open':
                 await openPosition(signer, options);
                 break;
+            case 'limit-open':
+                await limitOpenPosition(signer, options);
+                break;
+            case 'stop-open':
+                await stopOpenPosition(signer, options);
+                break;
             case 'increase':
                 await increasePosition(signer, options);
                 break;
@@ -602,6 +1039,12 @@ async function main() {
                 break;
             case 'close':
                 await closePosition(signer, options);
+                break;
+            case 'set-tp':
+                await setTakeProfit(signer, options);
+                break;
+            case 'set-sl':
+                await setStopLoss(signer, options);
                 break;
             case 'set-price':
                 await setPrice(signer, options);

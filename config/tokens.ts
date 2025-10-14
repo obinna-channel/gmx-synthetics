@@ -1413,6 +1413,13 @@ const config: {
       dataStreamFeedId: "0x0000000000000000000000000000000000000000000000000000000000000000",
       dataStreamFeedDecimals: 18,
     },
+    mTSLA: {
+      address: "0x77d4DdD2E847592fb7710e342C0492A4b85655f4", // TSLA stock index token
+      decimals: 18,
+      transferGasLimit: 200 * 1000,
+      dataStreamFeedId: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      dataStreamFeedDecimals: 18,
+    },
     CRV: {
       synthetic: true,
       decimals: 18,
