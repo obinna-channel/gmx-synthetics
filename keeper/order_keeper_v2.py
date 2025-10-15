@@ -474,18 +474,27 @@ class LiquidationMonitor:
 
     def get_market_prices_for_reader(self, market):
         """
-        Build market prices struct for Reader contract calls
+        Build market prices struct for Reader contract calls (market-aware)
         Returns tuple of (indexTokenPrice, longTokenPrice, shortTokenPrice)
         Each price is a tuple of (min, max)
         """
-        prices = self.keeper.get_current_prices()
+        # Get prices for this specific market
+        prices = self.keeper.get_current_prices(market)
+
+        # Get market config to know which tokens to use
+        market_config = self.keeper.MARKETS.get(market)
+        if not market_config:
+            # Fallback to default market
+            market = self.keeper.mUSDTNGN_MARKET
+            market_config = self.keeper.MARKETS[market]
+            prices = self.keeper.get_current_prices(market)
 
         # Market prices struct for Reader
         # Structure: ((minIndex, maxIndex), (minLong, maxLong), (minShort, maxShort))
         return (
-            (prices[self.keeper.mUSDTNGN], prices[self.keeper.mUSDTNGN]),  # indexTokenPrice (min, max)
-            (prices[self.keeper.mUSD], prices[self.keeper.mUSD]),           # longTokenPrice (min, max)
-            (prices[self.keeper.mNGN], prices[self.keeper.mNGN])            # shortTokenPrice (min, max)
+            (prices[market_config["indexToken"]], prices[market_config["indexToken"]]),  # indexTokenPrice (min, max)
+            (prices[market_config["longToken"]], prices[market_config["longToken"]]),     # longTokenPrice (min, max)
+            (prices[market_config["shortToken"]], prices[market_config["shortToken"]])    # shortTokenPrice (min, max)
         )
 
     async def scan_positions(self):
@@ -552,7 +561,15 @@ class LiquidationMonitor:
             # Get current prices
             market_prices = self.get_market_prices_for_reader(market)
 
-            # Check if position is liquidatable via Reader contract
+            # Get market configuration for token addresses
+            market_config = self.keeper.MARKETS.get(market)
+            if not market_config:
+                # Fallback to default market
+                market = self.keeper.mUSDTNGN_MARKET
+                market_config = self.keeper.MARKETS[market]
+                market_prices = self.get_market_prices_for_reader(market)
+
+            # Check if position is liquidatable via Reader contract (market-aware)
             is_liquidatable, reason, info = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: self.keeper.reader.functions.isPositionLiquidatable(
@@ -561,9 +578,9 @@ class LiquidationMonitor:
                     bytes.fromhex(position_key[2:]),
                     (
                         Web3.to_checksum_address(market),
-                        Web3.to_checksum_address(self.keeper.mUSDTNGN),  # indexToken
-                        Web3.to_checksum_address(self.keeper.mUSD),      # longToken
-                        Web3.to_checksum_address(self.keeper.mNGN)       # shortToken
+                        Web3.to_checksum_address(market_config["indexToken"]),  # indexToken (e.g., mUSDTNGN or mTSLA)
+                        Web3.to_checksum_address(market_config["longToken"]),   # longToken (e.g., mUSD or USDT)
+                        Web3.to_checksum_address(market_config["shortToken"])   # shortToken (e.g., mNGN or USDT)
                     ),
                     market_prices,
                     True,  # shouldValidateMinCollateralUsd
@@ -606,11 +623,11 @@ class LiquidationMonitor:
             print(f"   Market: {market}")
             print(f"   Side: {'LONG' if is_long else 'SHORT'}")
 
-            # Update MockOracleProvider prices first (like order execution does)
-            await self.keeper.update_mock_provider_prices()
+            # Update MockOracleProvider prices first (market-aware)
+            await self.keeper.update_mock_provider_prices(market)
 
-            # Build oracle params
-            oracle_params = self.build_oracle_params()
+            # Build oracle params (market-aware)
+            oracle_params = self.build_oracle_params(market)
 
             # Build transaction
             tx = await asyncio.get_event_loop().run_in_executor(
@@ -674,30 +691,53 @@ class LiquidationMonitor:
             traceback.print_exc()
             return False
 
-    def build_oracle_params(self):
-        """Build oracle params for liquidation execution (same as order execution)"""
+    def build_oracle_params(self, market):
+        """
+        Build oracle params for liquidation execution (market-aware)
 
-        prices = self.keeper.get_current_prices()
+        Args:
+            market: Market token address
+        """
+        # Get prices for this specific market
+        prices = self.keeper.get_current_prices(market)
 
-        # Tokens array
+        # Get market configuration
+        market_config = self.keeper.MARKETS.get(market)
+        if not market_config:
+            # Fallback to default market
+            market = self.keeper.mUSDTNGN_MARKET
+            market_config = self.keeper.MARKETS[market]
+            prices = self.keeper.get_current_prices(market)
+
+        # Build tokens array from market config
         tokens = [
-            Web3.to_checksum_address(self.keeper.mUSDTNGN),
-            Web3.to_checksum_address(self.keeper.mUSD),
-            Web3.to_checksum_address(self.keeper.mNGN)
+            Web3.to_checksum_address(market_config["indexToken"]),
+            Web3.to_checksum_address(market_config["longToken"]),
+            Web3.to_checksum_address(market_config["shortToken"])
         ]
 
+        # Deduplicate tokens (important for single-token markets where long == short)
+        # Oracle doesn't allow setting the same token price twice in one call
+        seen = set()
+        unique_tokens = []
+        for token in tokens:
+            token_lower = token.lower()
+            if token_lower not in seen:
+                seen.add(token_lower)
+                unique_tokens.append(token)
+
         # Providers array (use MockOracleProvider)
-        providers = [Web3.to_checksum_address(self.keeper.MOCK_PROVIDER)] * 3
+        providers = [Web3.to_checksum_address(self.keeper.MOCK_PROVIDER)] * len(unique_tokens)
 
         # Data array - encode prices as (uint256 min, uint256 max) for each token
         data = []
-        for token in tokens:
+        for token in unique_tokens:
             price = prices[token]
             # Encode as (minPrice, maxPrice) - both same for spot price
             encoded = encode(['uint256', 'uint256'], [price, price])
             data.append(encoded)
 
-        return (tokens, providers, data)
+        return (unique_tokens, providers, data)
 
     async def on_price_update(self, pair, price):
         """Handle price updates from price feed - trigger scan if significant move"""
@@ -774,11 +814,16 @@ class OrderKeeper:
         self.REFERRAL_STORAGE = "0x3B6DaA746aB0CE60e8eBF9F6F0157073d2d54547"
         self.LIQUIDATION_HANDLER = "0x08eEB7f410d94FF4B0a637b81d2bcD62A2FCBC8B"  # Deployed via hardhat deploy
 
-        # Token addresses (Updated for mUSDTNGN/mUSD/mNGN market)
-        self.mUSD = "0x85bf04B07A6df0172372b959C1C73F3e90F73faf"  # mUSD (long token)
-        self.mNGN = "0x2e08218698339AFdba205312cc23dAe8c3690827"  # mNGN (short token)
-        self.mUSDTNGN = "0x168e829F546940AE7Ab336aF4Bd95d07f7f6cE73"  # mUSDTNGN (index token)
-        self.mUSDTNGN_MARKET = "0x5E63276Caae0FF49b2762b98A1d37941AA50F804"  # Market token (Market 9)
+        # Token addresses
+        self.mUSD = "0x85bf04B07A6df0172372b959C1C73F3e90F73faf"  # mUSD (6 decimals)
+        self.mNGN = "0x2e08218698339AFdba205312cc23dAe8c3690827"  # mNGN (18 decimals)
+        self.mUSDTNGN = "0x168e829F546940AE7Ab336aF4Bd95d07f7f6cE73"  # mUSDTNGN index token (18 decimals)
+        self.mTSLA = "0x77d4DdD2E847592fb7710e342C0492A4b85655f4"  # mTSLA index token (18 decimals)
+        self.USDT = "0x5fE0CA3aF9Cf758D7F4159295Fd1Cd6a05562bb6"  # USDT (6 decimals)
+
+        # Market addresses
+        self.mUSDTNGN_MARKET = "0x5E63276Caae0FF49b2762b98A1d37941AA50F804"  # Market 9: USDTNGN crypto market
+        self.mTSLA_MARKET = "0x8ae559448a1482faffC925eF6a233276588348Df"  # Market 11: TSLA stock market
 
         # MockOracleProvider address (will be loaded from file if exists)
         self.MOCK_PROVIDER = self.load_mock_provider_address()
@@ -790,18 +835,40 @@ class OrderKeeper:
         self.price_cache = {}  # pair/ticker -> {'price': float, 'timestamp': str, 'data': dict}
         self.price_update_queue = asyncio.Queue()  # Queue of (pair/ticker, price) tuples
 
-        # Market to price pair mapping (supports both crypto and stocks)
-        # IMPORTANT: Use MARKET TOKEN address (the market contract), not index token
+        # ============================================================================
+        # MARKET REGISTRY - Central configuration for all markets
+        # ============================================================================
+        # This registry maps market addresses to their configuration
+        # All price fetching and oracle param building uses this registry
         #
-        # To add a stock market:
-        # 1. Deploy the market contract for your stock (e.g., TSLA market)
-        # 2. Add the market token address here: "0xMarketAddress": "TSLA"
-        # 3. Add the stock ticker to stock_tickers list above (line ~794)
+        # To add a new market (e.g., AAPL):
+        # 1. Define token addresses above (e.g., self.mAAPL, self.mAAPL_MARKET)
+        # 2. Add entry to MARKETS dict below
+        # 3. Add ticker to stock_tickers list (line ~850)
+        # That's it! No other changes needed.
+        self.MARKETS = {
+            self.mUSDTNGN_MARKET: {
+                "name": "USDTNGN",
+                "indexToken": self.mUSDTNGN,
+                "longToken": self.mUSD,
+                "shortToken": self.mNGN,
+                "pricePair": "USDTNGN",
+                "type": "crypto"
+            },
+            self.mTSLA_MARKET: {
+                "name": "TSLA",
+                "indexToken": self.mTSLA,
+                "longToken": self.mUSD,
+                "shortToken": self.mUSD,
+                "pricePair": "TSLA",
+                "type": "stock"
+            }
+        }
+
+        # Legacy mapping (derived from MARKETS for backward compatibility)
         self.MARKET_PAIR_MAPPING = {
-            self.mUSDTNGN_MARKET: "USDTNGN",  # Crypto market
-            # Stock markets - add here when deployed:
-            # "0x123...": "TSLA",
-            # "0x456...": "AAPL",
+            market_addr: config["pricePair"]
+            for market_addr, config in self.MARKETS.items()
         }
 
         # Initialize crypto price feed manager
@@ -1138,32 +1205,62 @@ class OrderKeeper:
         # Using the deployed address directly
         return "0x5D85d4acd35ffD0daD76C5eB0da3d7e53e20cCC5"
 
-    def get_current_prices(self):
+    def get_current_prices(self, market_address=None):
         """
-        Get current prices for all tokens based on live price feed
-        Returns dict of token_address -> price (with proper precision)
-        """
-        # Get the pair for this market
-        pair = self.MARKET_PAIR_MAPPING.get(self.mUSDTNGN, "USDTNGN")
+        Get current prices for tokens in a specific market
 
-        # Get current price from shared cache
-        price_data = self.price_cache.get(pair)
+        Args:
+            market_address: Market token address. If None, defaults to mUSDTNGN market
+
+        Returns:
+            dict: {token_address -> price (with precision 30)}
+        """
+        # Default to mUSDTNGN market for backward compatibility
+        if market_address is None:
+            market_address = self.mUSDTNGN_MARKET
+
+        # Get market configuration
+        market_config = self.MARKETS.get(market_address)
+        if not market_config:
+            print(f"   ⚠️  Unknown market: {market_address}, falling back to default")
+            market_address = self.mUSDTNGN_MARKET
+            market_config = self.MARKETS[market_address]
+
+        # Get price pair for this market
+        price_pair = market_config["pricePair"]
+
+        # Fetch current price from cache
+        price_data = self.price_cache.get(price_pair)
         current_price = price_data['price'] if price_data else None
 
-        if current_price:
-            # Use live price
-            exchange_rate = current_price
-        else:
-            # Fallback to stored rate
-            exchange_rate = self.EXCHANGE_RATE
-            print(f"   ⚠️  No live price, using fallback: {exchange_rate}")
+        if not current_price:
+            # Use fallback based on market type
+            if market_config["type"] == "crypto":
+                current_price = 1500  # Fallback for crypto (USDTNGN)
+            else:
+                current_price = 250.0  # Fallback for stocks
+            print(f"   ⚠️  No live price for {price_pair}, using fallback: {current_price}")
 
-        # Calculate token prices
-        prices = {
-            self.mUSDTNGN: int(exchange_rate * 10**12),     # Exchange rate with precision 30-18=12
-            self.mUSD: 1 * 10**24,                          # 1 USD with precision 30-6=24
-            self.mNGN: int((1 / exchange_rate) * 10**12),   # 1/rate USD with precision 30-18=12
-        }
+        # Build prices dict based on market type
+        prices = {}
+
+        if market_config["type"] == "crypto":
+            # Crypto market: index token is exchange rate, collateral tokens are currencies
+            exchange_rate = current_price
+            prices = {
+                market_config["indexToken"]: int(exchange_rate * 10**12),        # mUSDTNGN with precision 30-18=12
+                market_config["longToken"]: 1 * 10**24,                          # mUSD = $1 with precision 30-6=24
+                market_config["shortToken"]: int((1 / exchange_rate) * 10**12),  # mNGN with precision 30-18=12
+            }
+
+        elif market_config["type"] == "stock":
+            # Stock market: index token is stock price, collateral is mUSD
+            stock_price = current_price
+            prices = {
+                market_config["indexToken"]: int(stock_price * 10**12),  # mTSLA with precision 30-18=12
+                market_config["longToken"]: 1 * 10**24,                  # mUSD = $1 with precision 30-6=24
+                market_config["shortToken"]: 1 * 10**24,                 # mUSD = $1 (single token market)
+            }
 
         return prices
 
@@ -1283,11 +1380,11 @@ class OrderKeeper:
         """
         Recover order state from blockchain on startup.
         Queries the DataStore ORDER_LIST to find all active orders and rebuilds order queues.
-        Only recovers orders created on or after October 11, 2025.
+        Only recovers orders created on or after October 15, 2025.
         """
         # Date filter: Only recover orders from this date onwards
         from datetime import datetime
-        CUTOFF_DATE = datetime(2025, 10, 11, 0, 0, 0)
+        CUTOFF_DATE = datetime(2025, 10, 15, 0, 0, 0)
         CUTOFF_TIMESTAMP = int(CUTOFF_DATE.timestamp())
 
         print("\n" + "=" * 60)
@@ -1529,20 +1626,25 @@ class OrderKeeper:
 
         return False
 
-    async def update_mock_provider_prices(self):
-        """Update prices on MockOracleProvider using live price feed data"""
+    async def update_mock_provider_prices(self, market_address=None):
+        """
+        Update prices on MockOracleProvider using live price feed data
+
+        Args:
+            market_address: Market token address. If None, defaults to mUSDTNGN market
+        """
         if not self.mock_provider:
             print("  ⚠️  MockProvider not configured, skipping price update")
             return False
 
         print("\n📊 Updating MockOracleProvider prices...")
 
-        # Get current prices from live feed
-        prices = self.get_current_prices()
+        # Get current prices from live feed (market-aware)
+        prices = self.get_current_prices(market_address)
 
         try:
-            # Get initial nonce once for all transactions
-            nonce = self.w3.eth.get_transaction_count(self.account.address)
+            # Get initial nonce once for all transactions (including pending to avoid conflicts)
+            nonce = self.w3.eth.get_transaction_count(self.account.address, 'pending')
 
             # Get current gas price once
             current_gas_price = self.w3.eth.gas_price
@@ -1570,7 +1672,8 @@ class OrderKeeper:
                 # Store transaction info
                 token_name = 'mUSD' if token_address.lower() == self.mUSD.lower() else \
                              'mNGN' if token_address.lower() == self.mNGN.lower() else \
-                             'mUSDTNGN' if token_address.lower() == self.mUSDTNGN.lower() else 'Unknown'
+                             'mUSDTNGN' if token_address.lower() == self.mUSDTNGN.lower() else \
+                             'mTSLA' if token_address.lower() == self.mTSLA.lower() else 'Unknown'
                 transactions.append((tx_hash, token_name, price, token_address))
 
                 # Increment nonce for next transaction
@@ -1597,6 +1700,9 @@ class OrderKeeper:
                         elif token_name == 'mUSDTNGN':
                             rate_value = price / (10**12)  # Convert to exchange rate
                             print(f"  ✅ {token_name} price updated: {rate_value:.0f} (USDT/NGN rate)")
+                        elif token_name == 'mTSLA':
+                            stock_price = price / (10**12)  # Convert to USD
+                            print(f"  ✅ {token_name} price updated: ${stock_price:.2f}")
                         else:
                             print(f"  ✅ {token_name} price updated: {price}")
                         return True
@@ -1625,27 +1731,51 @@ class OrderKeeper:
             return False
 
     def build_oracle_params(self, order):
-        """Build oracle parameters for order execution"""
+        """
+        Build oracle parameters for order execution (market-aware)
 
-        # Get unique tokens involved
-        tokens = []
+        Extracts market from order and uses MARKETS registry to get correct tokens
+        """
+        # Extract market address from order
+        market_address = order.get('market')
 
-        # Always include market tokens for Market #9
-        tokens.append(self.mUSDTNGN)  # Index token
-        tokens.append(self.mUSD)      # Long token
-        tokens.append(self.mNGN)      # Short token
+        # Get market configuration
+        market_config = self.MARKETS.get(market_address)
+        if not market_config:
+            print(f"   ⚠️  Unknown market in order: {market_address}, falling back to default")
+            market_address = self.mUSDTNGN_MARKET
+            market_config = self.MARKETS[market_address]
+
+        # Build tokens list from market config
+        tokens = [
+            market_config["indexToken"],   # Index token (e.g., mUSDTNGN or mTSLA)
+            market_config["longToken"],    # Long token (e.g., mUSD or USDT)
+            market_config["shortToken"]    # Short token (e.g., mNGN or USDT)
+        ]
+
+        # Deduplicate tokens (important for single-token markets where long == short)
+        # Oracle doesn't allow setting the same token price twice in one call
+        seen = set()
+        unique_tokens = []
+        for token in tokens:
+            token_lower = token.lower()
+            if token_lower not in seen:
+                seen.add(token_lower)
+                unique_tokens.append(token)
 
         # Add collateral token if different and not already in list
         collateral_token = order.get('initialCollateralToken')
-        if collateral_token and collateral_token not in tokens:
-            tokens.append(collateral_token)
+        if collateral_token:
+            collateral_lower = collateral_token.lower()
+            if collateral_lower not in seen:
+                unique_tokens.append(collateral_token)
 
-        # Build oracle params
-        providers = [self.MOCK_PROVIDER] * len(tokens)
-        data = ['0x'] * len(tokens)  # Empty data for mock provider
+        # Build oracle params with deduplicated tokens
+        providers = [self.MOCK_PROVIDER] * len(unique_tokens)
+        data = ['0x'] * len(unique_tokens)  # Empty data for mock provider
 
         return {
-            'tokens': tokens,
+            'tokens': unique_tokens,
             'providers': providers,
             'data': data
         }
@@ -1683,8 +1813,9 @@ class OrderKeeper:
             del self.market_orders[order_key]
 
         try:
-            # Step 1: Update prices on MockProvider
-            if not await self.update_mock_provider_prices():
+            # Step 1: Update prices on MockProvider (market-aware)
+            market_address = order.get('market')
+            if not await self.update_mock_provider_prices(market_address):
                 raise Exception("Failed to update MockProvider prices")
 
             # Step 2: Build oracle params
@@ -1698,7 +1829,7 @@ class OrderKeeper:
             print(f"   Gas limit: {gas_limit}")
 
             # Step 4: Build transaction
-            nonce = self.w3.eth.get_transaction_count(self.account.address)
+            nonce = self.w3.eth.get_transaction_count(self.account.address, 'pending')
 
             # Get current gas price and add buffer
             current_gas_price = self.w3.eth.gas_price
