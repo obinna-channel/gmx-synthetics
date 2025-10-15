@@ -819,12 +819,14 @@ class OrderKeeper:
         self.mNGN = "0x2e08218698339AFdba205312cc23dAe8c3690827"  # mNGN (18 decimals)
         self.mUSDTNGN = "0x168e829F546940AE7Ab336aF4Bd95d07f7f6cE73"  # mUSDTNGN index token (18 decimals)
         self.mTSLA = "0x77d4DdD2E847592fb7710e342C0492A4b85655f4"  # mTSLA index token (18 decimals)
+        self.mNVDA = "0xbF159fd6ff7C70EC9A6cC15d31EfF2ae2E82B325"  # mNVDA index token (18 decimals)
         self.mUSDTARS = "0xed6890bE2409F0db06a00C809a298E2E06553BE1"  # mUSDTARS index token (18 decimals)
         self.USDT = "0x5fE0CA3aF9Cf758D7F4159295Fd1Cd6a05562bb6"  # USDT (6 decimals)
 
         # Market addresses
         self.mUSDTNGN_MARKET = "0x5E63276Caae0FF49b2762b98A1d37941AA50F804"  # Market 9: USDTNGN crypto market
         self.mTSLA_MARKET = "0x8ae559448a1482faffC925eF6a233276588348Df"  # Market 11: TSLA stock market
+        self.mNVDA_MARKET = "0x2c8b9691C1cDF99AAeBD304df9Db54f79b45423C"  # Market 13: NVDA stock market
         self.mUSDTARS_MARKET = "0xa97A12dcfFB8aB49BDa3198B0D9FD0A3563c4D69"  # Market 12: USDTARS crypto market
 
         # MockOracleProvider address (will be loaded from file if exists)
@@ -863,6 +865,14 @@ class OrderKeeper:
                 "longToken": self.mUSD,
                 "shortToken": self.mUSD,
                 "pricePair": "TSLA",
+                "type": "stock"
+            },
+            self.mNVDA_MARKET: {
+                "name": "NVDA",
+                "indexToken": self.mNVDA,
+                "longToken": self.mUSD,
+                "shortToken": self.mUSD,
+                "pricePair": "NVDA",
                 "type": "stock"
             },
             self.mUSDTARS_MARKET: {
@@ -1695,6 +1705,7 @@ class OrderKeeper:
                              'mNGN' if token_address.lower() == self.mNGN.lower() else \
                              'mUSDTNGN' if token_address.lower() == self.mUSDTNGN.lower() else \
                              'mTSLA' if token_address.lower() == self.mTSLA.lower() else \
+                             'mNVDA' if token_address.lower() == self.mNVDA.lower() else \
                              'mUSDTARS' if token_address.lower() == self.mUSDTARS.lower() else 'Unknown'
                 transactions.append((tx_hash, token_name, price, token_address))
 
