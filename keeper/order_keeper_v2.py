@@ -819,15 +819,23 @@ class OrderKeeper:
         self.mNGN = "0x2e08218698339AFdba205312cc23dAe8c3690827"  # mNGN (18 decimals)
         self.mUSDTNGN = "0x168e829F546940AE7Ab336aF4Bd95d07f7f6cE73"  # mUSDTNGN index token (18 decimals)
         self.mTSLA = "0x77d4DdD2E847592fb7710e342C0492A4b85655f4"  # mTSLA index token (18 decimals)
+        self.mAAPL = "0x7C32072A5f0C73f9a619a51fdF9A311AEABcD50e"  # mAAPL index token (18 decimals)
         self.mNVDA = "0xbF159fd6ff7C70EC9A6cC15d31EfF2ae2E82B325"  # mNVDA index token (18 decimals)
+        self.mMETA = "0xE2f8B015D23bB0EFdD57D8C08a328180437D031D"  # mMETA index token (18 decimals)
         self.mUSDTARS = "0xed6890bE2409F0db06a00C809a298E2E06553BE1"  # mUSDTARS index token (18 decimals)
+        self.mPKR = "0xDC7e9F5a3D337161880d084131BC16214f2F8EBD"  # mPKR index token (18 decimals)
+        self.mCOP = "0x8d9C2d46d6ff665afb4deb6CBc1Ed5E31eB455b8"  # mCOP index token (18 decimals)
         self.USDT = "0x5fE0CA3aF9Cf758D7F4159295Fd1Cd6a05562bb6"  # USDT (6 decimals)
 
         # Market addresses
         self.mUSDTNGN_MARKET = "0x5E63276Caae0FF49b2762b98A1d37941AA50F804"  # Market 9: USDTNGN crypto market
         self.mTSLA_MARKET = "0x8ae559448a1482faffC925eF6a233276588348Df"  # Market 11: TSLA stock market
+        self.mAAPL_MARKET = "0x8fb33464be3BE26d0BAd21B6F04e7c1Cf2B10449"  # Market 16: AAPL stock market
         self.mNVDA_MARKET = "0x2c8b9691C1cDF99AAeBD304df9Db54f79b45423C"  # Market 13: NVDA stock market
+        self.mMETA_MARKET = "0xafd908D358315efDBA493311AbE30648DEC4d2dE"  # Market 17: META stock market
         self.mUSDTARS_MARKET = "0xa97A12dcfFB8aB49BDa3198B0D9FD0A3563c4D69"  # Market 12: USDTARS crypto market
+        self.mPKR_MARKET = "0x85590d2166Ca4D68d5b96C6CFdcC1a59c8C7B383"  # Market 14: PKR crypto market
+        self.mCOP_MARKET = "0x53Ab653715F2A2E3e228f17fBe120F7BEe3d7B44"  # Market 15: COP crypto market
 
         # MockOracleProvider address (will be loaded from file if exists)
         self.MOCK_PROVIDER = self.load_mock_provider_address()
@@ -867,6 +875,14 @@ class OrderKeeper:
                 "pricePair": "TSLA",
                 "type": "stock"
             },
+            self.mAAPL_MARKET: {
+                "name": "AAPL",
+                "indexToken": self.mAAPL,
+                "longToken": self.mUSD,
+                "shortToken": self.mUSD,
+                "pricePair": "AAPL",
+                "type": "stock"
+            },
             self.mNVDA_MARKET: {
                 "name": "NVDA",
                 "indexToken": self.mNVDA,
@@ -875,12 +891,36 @@ class OrderKeeper:
                 "pricePair": "NVDA",
                 "type": "stock"
             },
+            self.mMETA_MARKET: {
+                "name": "META",
+                "indexToken": self.mMETA,
+                "longToken": self.mUSD,
+                "shortToken": self.mUSD,
+                "pricePair": "META",
+                "type": "stock"
+            },
             self.mUSDTARS_MARKET: {
                 "name": "USDTARS",
                 "indexToken": self.mUSDTARS,
                 "longToken": self.mUSD,
                 "shortToken": self.mUSD,
                 "pricePair": "USDTARS",
+                "type": "crypto"
+            },
+            self.mPKR_MARKET: {
+                "name": "USDTPKR",
+                "indexToken": self.mPKR,
+                "longToken": self.mUSD,
+                "shortToken": self.mUSD,
+                "pricePair": "USDTPKR",
+                "type": "crypto"
+            },
+            self.mCOP_MARKET: {
+                "name": "USDTCOP",
+                "indexToken": self.mCOP,
+                "longToken": self.mUSD,
+                "shortToken": self.mUSD,
+                "pricePair": "USDTCOP",
                 "type": "crypto"
             }
         }
@@ -1415,7 +1455,7 @@ class OrderKeeper:
         """
         # Date filter: Only recover orders from this date onwards
         from datetime import datetime
-        CUTOFF_DATE = datetime(2025, 10, 16, 0, 0, 0)
+        CUTOFF_DATE = datetime(2025, 10, 17, 0, 0, 0)
         CUTOFF_TIMESTAMP = int(CUTOFF_DATE.timestamp())
 
         print("\n" + "=" * 60)
@@ -1705,8 +1745,10 @@ class OrderKeeper:
                              'mNGN' if token_address.lower() == self.mNGN.lower() else \
                              'mUSDTNGN' if token_address.lower() == self.mUSDTNGN.lower() else \
                              'mTSLA' if token_address.lower() == self.mTSLA.lower() else \
+                             'mAAPL' if token_address.lower() == self.mAAPL.lower() else \
                              'mNVDA' if token_address.lower() == self.mNVDA.lower() else \
-                             'mUSDTARS' if token_address.lower() == self.mUSDTARS.lower() else 'Unknown'
+                             'mUSDTARS' if token_address.lower() == self.mUSDTARS.lower() else \
+                             'mPKR' if token_address.lower() == self.mPKR.lower() else 'Unknown'
                 transactions.append((tx_hash, token_name, price, token_address))
 
                 # Increment nonce for next transaction
