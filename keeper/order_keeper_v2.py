@@ -829,6 +829,7 @@ class OrderKeeper:
 
         # Market addresses
         self.mUSDTNGN_MARKET = "0x5E63276Caae0FF49b2762b98A1d37941AA50F804"  # Market 9: USDTNGN crypto market
+        self.mUSDTNGN_SINGLE_MARKET = "0x1aF0891884AD96De1Cb1CC3fDEd67842F00926bb"  # Market 18: USDTNGN single-token crypto market
         self.mTSLA_MARKET = "0x8ae559448a1482faffC925eF6a233276588348Df"  # Market 11: TSLA stock market
         self.mAAPL_MARKET = "0x8fb33464be3BE26d0BAd21B6F04e7c1Cf2B10449"  # Market 16: AAPL stock market
         self.mNVDA_MARKET = "0x2c8b9691C1cDF99AAeBD304df9Db54f79b45423C"  # Market 13: NVDA stock market
@@ -864,6 +865,14 @@ class OrderKeeper:
                 "indexToken": self.mUSDTNGN,
                 "longToken": self.mUSD,
                 "shortToken": self.mNGN,
+                "pricePair": "USDTNGN",
+                "type": "crypto"
+            },
+            self.mUSDTNGN_SINGLE_MARKET: {
+                "name": "USDTNGN_SINGLE",
+                "indexToken": self.mUSDTNGN,
+                "longToken": self.mUSD,
+                "shortToken": self.mUSD,
                 "pricePair": "USDTNGN",
                 "type": "crypto"
             },
