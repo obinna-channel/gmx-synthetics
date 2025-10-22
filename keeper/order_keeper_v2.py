@@ -162,26 +162,41 @@ class PriceFeedManager:
             # Notify via queue (non-blocking) - printing handled in monitor_conditional_orders
             await self.price_update_queue.put((pair, price))
 
-    async def fetch_initial_price(self, pair):
-        """Fetch current price via HTTP API"""
+    async def fetch_initial_price(self, pair, max_retries=3):
+        """Fetch current price via HTTP API with retry logic"""
         # Construct API URL from socket URL
         base_url = self.socket_url.rstrip('/')
         api_url = f"{base_url}/api/v1/price/current/{pair}"
 
-        try:
-            # Create SSL context that doesn't verify certificates (for Heroku)
-            connector = aiohttp.TCPConnector(ssl=False)
-            async with aiohttp.ClientSession(connector=connector) as session:
-                async with session.get(api_url, timeout=aiohttp.ClientTimeout(total=5)) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return data
-                    else:
-                        print(f"   ⚠️  HTTP {response.status} fetching price for {pair}")
-                        return None
-        except Exception as e:
-            print(f"   ⚠️  Error fetching initial price for {pair}: {e}")
-            return None
+        for attempt in range(max_retries):
+            try:
+                # Create SSL context that doesn't verify certificates (for Heroku)
+                connector = aiohttp.TCPConnector(ssl=False)
+                async with aiohttp.ClientSession(connector=connector) as session:
+                    async with session.get(api_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            return data
+                        else:
+                            if attempt < max_retries - 1:
+                                wait_time = 2 ** attempt  # Exponential backoff
+                                print(f"   ⚠️  HTTP {response.status} fetching price for {pair} (attempt {attempt + 1}/{max_retries})")
+                                print(f"   Retrying in {wait_time}s...")
+                                await asyncio.sleep(wait_time)
+                            else:
+                                print(f"   ❌ HTTP {response.status} fetching price for {pair} after {max_retries} attempts")
+                                return None
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    print(f"   ⚠️  Error fetching price for {pair} (attempt {attempt + 1}/{max_retries}): {e}")
+                    print(f"   Retrying in {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    print(f"   ❌ Failed to fetch price for {pair} after {max_retries} attempts: {e}")
+                    return None
+
+        return None
 
     async def subscribe_to_pairs(self):
         """Subscribe to all pairs in watch list and fetch initial prices"""
@@ -222,7 +237,7 @@ class PriceFeedManager:
             if self.price_cache:
                 print(f"   ✅ Received price update")
             else:
-                print(f"   ⚠️  No price data received, will use fallback (1500) until first update")
+                print(f"   ❌ No price data received. System will not operate until prices are available.")
 
     async def connect(self):
         """Connect to the Socket.IO server"""
@@ -324,26 +339,41 @@ class StockPriceFeedManager:
             # Notify via queue (non-blocking)
             await self.price_update_queue.put((symbol, price))
 
-    async def fetch_initial_price(self, ticker):
-        """Fetch current stock price via HTTP API"""
+    async def fetch_initial_price(self, ticker, max_retries=3):
+        """Fetch current stock price via HTTP API with retry logic"""
         # Construct API URL from socket URL
         base_url = self.socket_url.rstrip('/')
         api_url = f"{base_url}/api/v1/price/current/{ticker}"
 
-        try:
-            # Create SSL context that doesn't verify certificates (for Heroku)
-            connector = aiohttp.TCPConnector(ssl=False)
-            async with aiohttp.ClientSession(connector=connector) as session:
-                async with session.get(api_url, timeout=aiohttp.ClientTimeout(total=5)) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return data
-                    else:
-                        print(f"   ⚠️  HTTP {response.status} fetching price for {ticker}")
-                        return None
-        except Exception as e:
-            print(f"   ⚠️  Error fetching initial price for {ticker}: {e}")
-            return None
+        for attempt in range(max_retries):
+            try:
+                # Create SSL context that doesn't verify certificates (for Heroku)
+                connector = aiohttp.TCPConnector(ssl=False)
+                async with aiohttp.ClientSession(connector=connector) as session:
+                    async with session.get(api_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            return data
+                        else:
+                            if attempt < max_retries - 1:
+                                wait_time = 2 ** attempt  # Exponential backoff
+                                print(f"   ⚠️  HTTP {response.status} fetching price for {ticker} (attempt {attempt + 1}/{max_retries})")
+                                print(f"   Retrying in {wait_time}s...")
+                                await asyncio.sleep(wait_time)
+                            else:
+                                print(f"   ❌ HTTP {response.status} fetching price for {ticker} after {max_retries} attempts")
+                                return None
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    print(f"   ⚠️  Error fetching price for {ticker} (attempt {attempt + 1}/{max_retries}): {e}")
+                    print(f"   Retrying in {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    print(f"   ❌ Failed to fetch price for {ticker} after {max_retries} attempts: {e}")
+                    return None
+
+        return None
 
     async def connect(self):
         """Connect to the Socket.IO server"""
@@ -458,19 +488,257 @@ class LiquidationMonitor:
         self.ENABLED = os.getenv("ENABLE_LIQUIDATIONS", "true").lower() == "true"
         self.MAX_GAS_PRICE_GWEI = int(os.getenv("LIQUIDATION_MAX_GAS_PRICE", "50"))
 
-        # Markets to monitor (use market token addresses)
-        self.markets = [keeper.mUSDTNGN_MARKET]
+        # Markets to monitor - all markets from MARKETS registry (8 markets, excluding dual-token USDTNGN)
+        self.markets = list(keeper.MARKETS.keys())
 
         # State tracking
         self.last_scan_time = 0
         self.last_price = {}
         self.executing_liquidations = set()  # Track ongoing liquidations to prevent duplicates
+        self.failed_liquidations = {}  # Track failed attempts: {position_key: {'attempts': int, 'last_attempt': timestamp, 'error': str}}
+
+        # Position cache for enumeration
+        self.position_cache = []  # List of position keys
+        self.cache_updated_at = 0
+        self.CACHE_REFRESH_INTERVAL = int(os.getenv("POSITION_CACHE_REFRESH", "600"))  # 10 minutes
+
+        # Retry configuration
+        self.MAX_RETRY_ATTEMPTS = int(os.getenv("LIQUIDATION_MAX_RETRIES", "3"))
+        self.RETRY_BACKOFF_BASE = int(os.getenv("LIQUIDATION_RETRY_BACKOFF", "60"))  # Base backoff in seconds
 
         print(f"💀 Liquidation Monitor initialized")
         print(f"   Enabled: {self.ENABLED}")
         print(f"   Scan interval: {self.SCAN_INTERVAL}s")
         print(f"   Price trigger: {self.PRICE_TRIGGER_THRESHOLD*100}%")
         print(f"   Markets: {len(self.markets)}")
+        print(f"   Cache refresh: {self.CACHE_REFRESH_INTERVAL}s")
+
+        # NOTE: Initial cache load happens in async_init() (can't await in __init__)
+
+    async def async_init(self):
+        """
+        Async initialization - loads position cache before monitoring begins
+        Called from OrderKeeper.run() before starting monitor loop
+        """
+        print(f"🔄 [Liquidation] Loading initial position cache...")
+        await self.refresh_position_cache()
+        print(f"✅ [Liquidation] Initial cache loaded: {len(self.position_cache)} positions")
+
+    def get_position_list_key(self):
+        """
+        Get the DataStore key for POSITION_LIST
+        Matches: keccak256(abi.encode(["string"], ["POSITION_LIST"]))
+        """
+        from eth_abi import encode
+        position_list_bytes = encode(['string'], ['POSITION_LIST'])
+        position_list_key = Web3.keccak(position_list_bytes)
+        return position_list_key
+
+    async def fetch_all_position_keys(self, batch_size=1000):
+        """
+        Fetch all position keys from DataStore (non-blocking)
+        Returns list of position keys (bytes32)
+        """
+        try:
+            position_list_key = self.get_position_list_key()
+
+            # Get total count of positions (non-blocking)
+            position_count = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self.keeper.datastore.functions.getBytes32Count(
+                    position_list_key
+                ).call()
+            )
+
+            if position_count == 0:
+                print(f"   No positions found in POSITION_LIST")
+                return []
+
+            # Fetch position keys in batches (non-blocking)
+            total_to_fetch = min(position_count, batch_size)
+            position_keys = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self.keeper.datastore.functions.getBytes32ValuesAt(
+                    position_list_key,
+                    0,
+                    total_to_fetch
+                ).call()
+            )
+
+            print(f"   Fetched {len(position_keys)} position keys from DataStore")
+            return position_keys
+
+        except Exception as e:
+            print(f"   ❌ Error fetching position keys: {e}")
+            return []
+
+    async def get_position_info_from_key(self, position_key):
+        """
+        Get position details from position key using Reader contract (non-blocking)
+        Returns dict with account, market, collateralToken, isLong, sizeInUsd, etc.
+        Returns None if position is inactive (sizeInUsd == 0)
+        """
+        try:
+            # Call Reader.getPosition() (non-blocking)
+            position = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self.keeper.reader.functions.getPosition(
+                    Web3.to_checksum_address(self.keeper.DATA_STORE),
+                    position_key
+                ).call()
+            )
+
+            # Position structure: (addresses, numbers, flags)
+            # addresses: (account, market, collateralToken)
+            # numbers: (sizeInUsd, sizeInTokens, collateralAmount, ...)
+            # flags: (isLong,)
+
+            account = position[0][0]  # addresses.account
+            market = position[0][1]   # addresses.market
+            collateral_token = position[0][2]  # addresses.collateralToken
+
+            size_in_usd = position[1][0]  # numbers.sizeInUsd
+            size_in_tokens = position[1][1]  # numbers.sizeInTokens
+            collateral_amount = position[1][2]  # numbers.collateralAmount
+
+            is_long = position[2][0]  # flags.isLong
+
+            # Filter out inactive positions (size == 0)
+            if size_in_usd == 0:
+                return None
+
+            # Convert position_key to hex string if it's not already
+            if isinstance(position_key, bytes):
+                key_hex = '0x' + position_key.hex()
+            elif hasattr(position_key, 'hex'):
+                key_hex = '0x' + position_key.hex()
+            else:
+                key_hex = position_key if position_key.startswith('0x') else '0x' + position_key
+
+            return {
+                'key': key_hex,
+                'account': account,
+                'market': market,
+                'collateralToken': collateral_token,
+                'isLong': is_long,
+                'sizeInUsd': size_in_usd,
+                'sizeInTokens': size_in_tokens,
+                'collateralAmount': collateral_amount
+            }
+
+        except Exception as e:
+            # Position might be deleted or invalid
+            return None
+
+    async def refresh_position_cache(self):
+        """
+        Refresh the position cache by fetching all position keys and their details (non-blocking)
+        This should be called periodically (every 10 minutes by default)
+        """
+        import time
+
+        print(f"🔄 [Liquidation] Refreshing position cache...")
+
+        try:
+            # Fetch all position keys from DataStore (non-blocking)
+            position_keys = await self.fetch_all_position_keys()
+
+            if len(position_keys) == 0:
+                print(f"   No positions found in DataStore")
+                self.position_cache = []
+                self.cache_updated_at = time.time()
+                return
+
+            # Get details for each position and filter active ones (non-blocking)
+            active_positions = []
+            for position_key in position_keys:
+                position_info = await self.get_position_info_from_key(position_key)
+                if position_info:
+                    active_positions.append(position_info)
+
+            # Update cache
+            self.position_cache = active_positions
+            self.cache_updated_at = time.time()
+
+            print(f"   ✅ Cache updated: {len(active_positions)} active positions")
+
+        except Exception as e:
+            print(f"   ❌ Error refreshing cache: {e}")
+            # Keep old cache if refresh fails
+            pass
+
+    async def get_cached_positions(self):
+        """
+        Get cached positions, refreshing if cache is stale (non-blocking)
+        Returns list of active position info dicts
+        """
+        import time
+
+        # Check if cache needs refresh
+        cache_age = time.time() - self.cache_updated_at
+        if cache_age > self.CACHE_REFRESH_INTERVAL:
+            print(f"   Cache is stale ({cache_age:.0f}s old), refreshing...")
+            await self.refresh_position_cache()
+
+        return self.position_cache
+
+    def should_retry_liquidation(self, position_key):
+        """
+        Check if we should retry liquidating a position based on previous failures and backoff
+        Returns (should_retry: bool, reason: str)
+        """
+        import time
+
+        if position_key not in self.failed_liquidations:
+            return (True, "First attempt")
+
+        failure_info = self.failed_liquidations[position_key]
+        attempts = failure_info['attempts']
+        last_attempt = failure_info['last_attempt']
+        last_error = failure_info.get('error', '')
+
+        # Check if we've exceeded max retries
+        if attempts >= self.MAX_RETRY_ATTEMPTS:
+            return (False, f"Max retries ({self.MAX_RETRY_ATTEMPTS}) exceeded")
+
+        # Check if error is permanent (don't retry)
+        permanent_errors = [
+            "not liquidatable",
+            "position not found",
+            "unauthorized"
+        ]
+        if any(err in last_error.lower() for err in permanent_errors):
+            return (False, f"Permanent error: {last_error}")
+
+        # Calculate exponential backoff: base * (2 ^ attempts)
+        backoff_seconds = self.RETRY_BACKOFF_BASE * (2 ** attempts)
+        time_since_last = time.time() - last_attempt
+
+        if time_since_last < backoff_seconds:
+            wait_more = backoff_seconds - time_since_last
+            return (False, f"Backoff: wait {wait_more:.0f}s more")
+
+        return (True, f"Retry attempt #{attempts + 1}")
+
+    def record_liquidation_failure(self, position_key, error):
+        """Record a failed liquidation attempt"""
+        import time
+
+        if position_key not in self.failed_liquidations:
+            self.failed_liquidations[position_key] = {
+                'attempts': 1,
+                'last_attempt': time.time(),
+                'error': str(error)
+            }
+        else:
+            self.failed_liquidations[position_key]['attempts'] += 1
+            self.failed_liquidations[position_key]['last_attempt'] = time.time()
+            self.failed_liquidations[position_key]['error'] = str(error)
+
+    def record_liquidation_success(self, position_key):
+        """Clear failure tracking for successfully liquidated position"""
+        if position_key in self.failed_liquidations:
+            del self.failed_liquidations[position_key]
 
     def get_market_prices_for_reader(self, market):
         """
@@ -498,54 +766,68 @@ class LiquidationMonitor:
         )
 
     async def scan_positions(self):
-        """Scan all positions for liquidation opportunities"""
+        """Scan all positions for liquidation opportunities using cached positions"""
 
         print(f"\n🔍 [Liquidation] Scanning positions...")
 
         liquidation_count = 0
+        positions_checked = 0
 
         try:
-            for market in self.markets:
-                # Get market-specific accounts that have positions
-                # For now, we'll check a known list of accounts
-                # TODO: In production, enumerate all position keys from DataStore
+            # Get cached positions (auto-refreshes if stale, non-blocking)
+            cached_positions = await self.get_cached_positions()
 
-                accounts_to_check = [
-                    "0x3Bcc96fc2A86043D228c61A5C92f401B25CECE44",
-                    "0xB880CBFE2fb746838719805CEcE154b58D03A79b",
-                    "0xBaB0D0892Bf8563B731f8e8970fE856ce9308292",
-                    self.account.address  # Check our own account too
-                ]
+            if len(cached_positions) == 0:
+                print(f"   No active positions to scan")
+                return
 
-                for account in accounts_to_check:
-                    # Check both long and short positions
-                    for is_long in [True, False]:
-                        try:
-                            position_key = Web3.keccak(
-                                encode(
-                                    ['address', 'address', 'address', 'bool'],
-                                    [
-                                        Web3.to_checksum_address(account),
-                                        Web3.to_checksum_address(market),
-                                        Web3.to_checksum_address(self.keeper.mUSD),
-                                        is_long
-                                    ]
-                                )
-                            ).hex()
+            print(f"   Checking {len(cached_positions)} active positions...")
 
-                            # Check if liquidatable
-                            was_liquidated = await self.check_and_liquidate(position_key, market, account, is_long)
-                            if was_liquidated:
-                                liquidation_count += 1
+            # Check each cached position for liquidation
+            for position_info in cached_positions:
+                positions_checked += 1
+                position_key = None
 
-                        except Exception as e:
-                            # Position doesn't exist or error checking - normal, continue
-                            pass
+                try:
+                    # Extract position details from cache
+                    position_key = position_info['key']
+                    account = position_info['account']
+                    market = position_info['market']
+                    is_long = position_info['isLong']
 
+                    # Check if we should retry this position
+                    should_retry, retry_reason = self.should_retry_liquidation(position_key)
+
+                    if not should_retry:
+                        # Skip this position - already tried and failed
+                        continue
+
+                    # Check if liquidatable and execute if needed
+                    was_liquidated = await self.check_and_liquidate(
+                        position_key,
+                        market,
+                        account,
+                        is_long
+                    )
+
+                    if was_liquidated:
+                        liquidation_count += 1
+                        # Clear failure tracking on success
+                        self.record_liquidation_success(position_key)
+
+                except Exception as e:
+                    # Error checking this position - log and continue
+                    key_str = position_key[:16] + "..." if position_key else "unknown"
+                    print(f"   ⚠️  Error checking position {key_str}: {e}")
+                    if position_key:
+                        self.record_liquidation_failure(position_key, str(e))
+                    pass
+
+            # Summary
             if liquidation_count > 0:
-                print(f"   ✅ Executed {liquidation_count} liquidation(s)")
+                print(f"   ✅ Executed {liquidation_count} liquidation(s) out of {positions_checked} positions")
             else:
-                print(f"   ✓ No liquidations needed")
+                print(f"   ✓ No liquidations needed ({positions_checked} positions checked)")
 
         except Exception as e:
             print(f"   ❌ Error scanning positions: {e}")
@@ -597,10 +879,20 @@ class LiquidationMonitor:
 
                 # Execute liquidation and return success status
                 success = await self.execute_liquidation(market, account, is_long)
+
+                if not success:
+                    # Execution failed - record the failure
+                    self.record_liquidation_failure(position_key, "Liquidation execution failed")
+
                 return success
+            else:
+                # Position is not liquidatable - not an error, just not ready yet
+                # Don't record as failure, don't retry aggressively
+                return False
 
         except Exception as e:
             # Position likely doesn't exist or error checking
+            # Don't record as permanent failure - let scan_positions handle it
             pass
 
         return False
@@ -860,14 +1152,8 @@ class OrderKeeper:
         # 3. Add ticker to stock_tickers list (line ~850)
         # That's it! No other changes needed.
         self.MARKETS = {
-            self.mUSDTNGN_MARKET: {
-                "name": "USDTNGN",
-                "indexToken": self.mUSDTNGN,
-                "longToken": self.mUSD,
-                "shortToken": self.mNGN,
-                "pricePair": "USDTNGN",
-                "type": "crypto"
-            },
+            # Market 9 (dual-token USDTNGN with mUSD-mNGN) is NOT tracked
+            # Only tracking Market 18 (single-token USDTNGN with mUSD-mUSD)
             self.mUSDTNGN_SINGLE_MARKET: {
                 "name": "USDTNGN_SINGLE",
                 "indexToken": self.mUSDTNGN,
@@ -964,8 +1250,8 @@ class OrderKeeper:
         )
 
         # Price configuration - will be updated dynamically from price feed
-        # Fallback to 1500 if no price data available yet
-        self.EXCHANGE_RATE = 1500  # Fallback rate
+        # NO FALLBACK - system will error if prices are not available
+        self.EXCHANGE_RATE = None  # Will be populated from price feeds
 
         # Event signatures
         self.EVENT_LOG2_SIGNATURE = "0x468a25a7ba624ceea6e540ad6f49171b52495b648417ae91bca21676d8a24dc5"
@@ -1105,6 +1391,7 @@ class OrderKeeper:
                                     {"name": "sizeInUsd", "type": "uint256"},
                                     {"name": "sizeInTokens", "type": "uint256"},
                                     {"name": "collateralAmount", "type": "uint256"},
+                                    {"name": "pendingImpactAmount", "type": "int256"},
                                     {"name": "borrowingFactor", "type": "uint256"},
                                     {"name": "fundingFeeAmountPerSize", "type": "uint256"},
                                     {"name": "longTokenClaimableFundingAmountPerSize", "type": "uint256"},
@@ -1291,9 +1578,7 @@ class OrderKeeper:
         # Get market configuration
         market_config = self.MARKETS.get(market_address)
         if not market_config:
-            print(f"   ⚠️  Unknown market: {market_address}, falling back to default")
-            market_address = self.mUSDTNGN_MARKET
-            market_config = self.MARKETS[market_address]
+            raise ValueError(f"Market {market_address} is not tracked by this keeper")
 
         # Get price pair for this market
         price_pair = market_config["pricePair"]
@@ -1303,12 +1588,8 @@ class OrderKeeper:
         current_price = price_data['price'] if price_data else None
 
         if not current_price:
-            # Use fallback based on market type
-            if market_config["type"] == "crypto":
-                current_price = 1500  # Fallback for crypto (USDTNGN)
-            else:
-                current_price = 250.0  # Fallback for stocks
-            print(f"   ⚠️  No live price for {price_pair}, using fallback: {current_price}")
+            # NO FALLBACK - raise error if price is not available
+            raise ValueError(f"No price available for {price_pair}. Price feeds may not be connected yet or the market is not being monitored.")
 
         # Build prices dict based on market type
         prices = {}
@@ -1545,6 +1826,11 @@ class OrderKeeper:
 
                 if not order:
                     failed_fetch += 1
+                    return
+
+                # Skip orders from untracked markets (silently)
+                market_address = order.get('market')
+                if market_address not in self.MARKETS:
                     return
 
                 # Skip orders created before cutoff date
@@ -1826,9 +2112,7 @@ class OrderKeeper:
         # Get market configuration
         market_config = self.MARKETS.get(market_address)
         if not market_config:
-            print(f"   ⚠️  Unknown market in order: {market_address}, falling back to default")
-            market_address = self.mUSDTNGN_MARKET
-            market_config = self.MARKETS[market_address]
+            raise ValueError(f"Market {market_address} is not tracked by this keeper")
 
         # Build tokens list from market config
         tokens = [
@@ -2104,6 +2388,12 @@ class OrderKeeper:
         order = await self.fetch_order_details(order_key)
 
         if order:
+            # Check if market is tracked - silently ignore untracked markets
+            market_address = order.get('market')
+            if market_address not in self.MARKETS:
+                # Silently ignore orders from untracked markets
+                return
+
             # Classify the order
             order_class = self.classify_order(order)
 
@@ -2301,7 +2591,10 @@ class OrderKeeper:
 
         print("\n🚀 Starting keeper services...")
 
-        # STEP 2: Start ALL background services in parallel (truly non-blocking)
+        # STEP 2: Initialize liquidation monitor cache (loads all positions)
+        await self.liquidation_monitor.async_init()
+
+        # STEP 3: Start all background services in parallel (truly non-blocking)
         async def run_recovery():
             """Background order recovery"""
             try:
