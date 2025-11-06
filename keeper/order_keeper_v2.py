@@ -897,8 +897,8 @@ class LiquidationMonitor:
 
         return False
 
-    async def execute_liquidation(self, market, account, is_long):
-        """Execute a liquidation transaction. Returns True if successful, False otherwise."""
+    async def execute_liquidation(self, market, account, is_long, retry_count=0, max_retries=3):
+        """Execute a liquidation transaction with retry logic. Returns True if successful, False otherwise."""
 
         try:
             # Check gas price
@@ -908,9 +908,9 @@ class LiquidationMonitor:
             if current_gas_price > max_gas_price:
                 print(f"   ⚠️  Gas price too high ({current_gas_price/10**9:.2f} gwei > {self.MAX_GAS_PRICE_GWEI} gwei)")
                 print(f"   Skipping liquidation")
-                return
+                return False
 
-            print(f"\n⚡ Executing liquidation...")
+            print(f"\n⚡ Executing liquidation (Attempt {retry_count + 1}/{max_retries})...")
             print(f"   Account: {account}")
             print(f"   Market: {market}")
             print(f"   Side: {'LONG' if is_long else 'SHORT'}")
@@ -921,7 +921,15 @@ class LiquidationMonitor:
             # Build oracle params (market-aware)
             oracle_params = self.build_oracle_params(market)
 
-            # Build transaction
+            # Build transaction with 'pending' nonce to avoid conflicts
+            nonce = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self.w3.eth.get_transaction_count(self.account.address, 'pending')
+            )
+
+            # Add 20% gas price buffer
+            gas_price_with_buffer = int(current_gas_price * 1.2)
+
             tx = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: self.keeper.liquidation_handler.functions.executeLiquidation(
@@ -933,8 +941,8 @@ class LiquidationMonitor:
                 ).build_transaction({
                     'from': self.account.address,
                     'gas': 5_000_000,
-                    'gasPrice': current_gas_price,
-                    'nonce': self.w3.eth.get_transaction_count(self.account.address)
+                    'gasPrice': gas_price_with_buffer,
+                    'nonce': nonce
                 })
             )
 
@@ -943,6 +951,7 @@ class LiquidationMonitor:
             tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
 
             print(f"   📤 TX submitted: {tx_hash.hex()}")
+            print(f"   Nonce: {nonce}")
 
             # Wait for receipt (non-blocking)
             receipt = await asyncio.get_event_loop().run_in_executor(
@@ -953,6 +962,7 @@ class LiquidationMonitor:
             if receipt.status == 1:
                 print(f"   ✅ Liquidation successful!")
                 print(f"   Gas used: {receipt.gasUsed:,}")
+                print(f"   View on Arbiscan: https://sepolia.arbiscan.io/tx/{tx_hash.hex()}")
                 return True
             else:
                 print(f"   ❌ Liquidation transaction failed")
@@ -978,10 +988,26 @@ class LiquidationMonitor:
                 return False
 
         except Exception as e:
-            print(f"   ❌ Error executing liquidation: {e}")
-            import traceback
-            traceback.print_exc()
-            return False
+            error_str = str(e)
+            print(f"   ❌ Error executing liquidation: {error_str}")
+
+            # Check if this is a nonce error
+            is_nonce_error = 'nonce too low' in error_str.lower() or 'nonce too high' in error_str.lower()
+
+            # Retry logic with exponential backoff
+            if retry_count < max_retries - 1:
+                wait_time = 2 ** (retry_count + 1)  # 2s, 4s, 8s
+                if is_nonce_error:
+                    print(f"   🔄 Nonce error detected - retrying in {wait_time} seconds...")
+                else:
+                    print(f"   ⏳ Retrying in {wait_time} seconds...")
+                await asyncio.sleep(wait_time)
+                return await self.execute_liquidation(market, account, is_long, retry_count + 1, max_retries)
+            else:
+                print(f"   ❌ Max retries ({max_retries}) reached for liquidation")
+                import traceback
+                traceback.print_exc()
+                return False
 
     def build_oracle_params(self, market):
         """
