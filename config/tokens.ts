@@ -1420,6 +1420,48 @@ const config: {
       dataStreamFeedId: "0x0000000000000000000000000000000000000000000000000000000000000000",
       dataStreamFeedDecimals: 18,
     },
+    mMETA: {
+      address: "0xE2f8B015D23bB0EFdD57D8C08a328180437D031D", // META stock index token
+      decimals: 18,
+      transferGasLimit: 200 * 1000,
+      dataStreamFeedId: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      dataStreamFeedDecimals: 18,
+    },
+    mAAPL: {
+      address: "0x7C32072A5f0C73f9a619a51fdF9A311AEABcD50e", // AAPL stock index token
+      decimals: 18,
+      transferGasLimit: 200 * 1000,
+      dataStreamFeedId: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      dataStreamFeedDecimals: 18,
+    },
+    mUSDTARS: {
+      address: "0xed6890bE2409F0db06a00C809a298E2E06553BE1", // USDT/ARS exchange rate index token
+      decimals: 18,
+      transferGasLimit: 200 * 1000,
+      dataStreamFeedId: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      dataStreamFeedDecimals: 18,
+    },
+    mPKR: {
+      address: "0xDC7e9F5a3D337161880d084131BC16214f2F8EBD", // USDT/PKR exchange rate index token
+      decimals: 18,
+      transferGasLimit: 200 * 1000,
+      dataStreamFeedId: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      dataStreamFeedDecimals: 18,
+    },
+    mCOP: {
+      address: "0x8d9C2d46d6ff665afb4deb6CBc1Ed5E31eB455b8", // USDT/COP exchange rate index token
+      decimals: 18,
+      transferGasLimit: 200 * 1000,
+      dataStreamFeedId: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      dataStreamFeedDecimals: 18,
+    },
+    mNVDA: {
+      address: "0xbF159fd6ff7C70EC9A6cC15d31EfF2ae2E82B325", // NVDA stock index token
+      decimals: 18,
+      transferGasLimit: 200 * 1000,
+      dataStreamFeedId: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      dataStreamFeedDecimals: 18,
+    },
     CRV: {
       synthetic: true,
       decimals: 18,

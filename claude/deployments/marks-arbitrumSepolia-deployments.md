@@ -19,6 +19,12 @@ This deployment is a fork of GMX V2 for the Marks protocol, creating synthetic N
 | Marks USD | mUSD | `0x85bf04B07A6df0172372b959C1C73F3e90F73faf` | 6 | [View on Explorer](https://sepolia.arbiscan.io/address/0x85bf04B07A6df0172372b959C1C73F3e90F73faf) |
 | USDT/NGN Index | mUSDTNGN | `0x168e829F546940AE7Ab336aF4Bd95d07f7f6cE73` | 18 | [View on Explorer](https://sepolia.arbiscan.io/address/0x168e829F546940AE7Ab336aF4Bd95d07f7f6cE73) |
 | TSLA Stock Index | mTSLA | `0x77d4DdD2E847592fb7710e342C0492A4b85655f4` | 18 | [View on Explorer](https://sepolia.arbiscan.io/address/0x77d4DdD2E847592fb7710e342C0492A4b85655f4) |
+| META Stock Index | mMETA | `0xE2f8B015D23bB0EFdD57D8C08a328180437D031D` | 18 | [View on Explorer](https://sepolia.arbiscan.io/address/0xE2f8B015D23bB0EFdD57D8C08a328180437D031D) |
+| AAPL Stock Index | mAAPL | `0x7C32072A5f0C73f9a619a51fdF9A311AEABcD50e` | 18 | [View on Explorer](https://sepolia.arbiscan.io/address/0x7C32072A5f0C73f9a619a51fdF9A311AEABcD50e) |
+| USDT/ARS Index | mUSDTARS | `0xed6890bE2409F0db06a00C809a298E2E06553BE1` | 18 | [View on Explorer](https://sepolia.arbiscan.io/address/0xed6890bE2409F0db06a00C809a298E2E06553BE1) |
+| NVDA Stock Index | mNVDA | `0xbF159fd6ff7C70EC9A6cC15d31EfF2ae2E82B325` | 18 | [View on Explorer](https://sepolia.arbiscan.io/address/0xbF159fd6ff7C70EC9A6cC15d31EfF2ae2E82B325) |
+| USDT/PKR Index | mPKR | `0xDC7e9F5a3D337161880d084131BC16214f2F8EBD` | 18 | [View on Explorer](https://sepolia.arbiscan.io/address/0xDC7e9F5a3D337161880d084131BC16214f2F8EBD) |
+| USDT/COP Index | mCOP | `0x8d9C2d46d6ff665afb4deb6CBc1Ed5E31eB455b8` | 18 | [View on Explorer](https://sepolia.arbiscan.io/address/0x8d9C2d46d6ff665afb4deb6CBc1Ed5E31eB455b8) |
 
 ## Markets
 
@@ -33,6 +39,15 @@ This deployment is a fork of GMX V2 for the Marks protocol, creating synthetic N
 | Market 7: mUSD [mUSD-mNGN] | mUSD | mUSD | mNGN | `0xf7F4Bb2014A164A919Ccec2b97Bd4805f86B83aD` | [View on Explorer](https://sepolia.arbiscan.io/address/0xf7F4Bb2014A164A919Ccec2b97Bd4805f86B83aD) |
 | Market 8: mNGN [mUSD-mNGN] | mNGN | mUSD | mNGN | `0xb0D93252624e03138a261689eDE446F6BEd768BF` | [View on Explorer](https://sepolia.arbiscan.io/address/0xb0D93252624e03138a261689eDE446F6BEd768BF) |
 | Market 9: mUSDTNGN [mUSD-mNGN] | mUSDTNGN | mUSD | mNGN | `0x5E63276Caae0FF49b2762b98A1d37941AA50F804` | [View on Explorer](https://sepolia.arbiscan.io/address/0x5E63276Caae0FF49b2762b98A1d37941AA50F804) |
+| Market 10: mTSLA [USDT-USDT] | mTSLA | USDT | USDT | `0x784c2e2C5499853d052D339ed2834782C7C816b6` | [View on Explorer](https://sepolia.arbiscan.io/address/0x784c2e2C5499853d052D339ed2834782C7C816b6) |
+| Market 11: mTSLA [mUSD-mUSD] | mTSLA | mUSD | mUSD | `0x8ae559448a1482faffC925eF6a233276588348Df` | [View on Explorer](https://sepolia.arbiscan.io/address/0x8ae559448a1482faffC925eF6a233276588348Df) |
+| Market 12: mUSDTARS [mUSD-mUSD] | mUSDTARS | mUSD | mUSD | `0xa97A12dcfFB8aB49BDa3198B0D9FD0A3563c4D69` | [View on Explorer](https://sepolia.arbiscan.io/address/0xa97A12dcfFB8aB49BDa3198B0D9FD0A3563c4D69) |
+| Market 13: mNVDA [mUSD-mUSD] | mNVDA | mUSD | mUSD | `0x2c8b9691C1cDF99AAeBD304df9Db54f79b45423C` | [View on Explorer](https://sepolia.arbiscan.io/address/0x2c8b9691C1cDF99AAeBD304df9Db54f79b45423C) |
+| Market 14: mPKR [mUSD-mUSD] | mPKR | mUSD | mUSD | `0x85590d2166Ca4D68d5b96C6CFdcC1a59c8C7B383` | [View on Explorer](https://sepolia.arbiscan.io/address/0x85590d2166Ca4D68d5b96C6CFdcC1a59c8C7B383) |
+| Market 15: mCOP [mUSD-mUSD] | mCOP | mUSD | mUSD | `0x53Ab653715F2A2E3e228f17fBe120F7BEe3d7B44` | [View on Explorer](https://sepolia.arbiscan.io/address/0x53Ab653715F2A2E3e228f17fBe120F7BEe3d7B44) |
+| Market 16: mAAPL [mUSD-mUSD] | mAAPL | mUSD | mUSD | `0x8fb33464be3BE26d0BAd21B6F04e7c1Cf2B10449` | [View on Explorer](https://sepolia.arbiscan.io/address/0x8fb33464be3BE26d0BAd21B6F04e7c1Cf2B10449) |
+| Market 17: mMETA [mUSD-mUSD] | mMETA | mUSD | mUSD | `0xafd908D358315efDBA493311AbE30648DEC4d2dE` | [View on Explorer](https://sepolia.arbiscan.io/address/0xafd908D358315efDBA493311AbE30648DEC4d2dE) |
+| Market 18: mUSDTNGN [mUSD-mUSD] | mUSDTNGN | mUSD | mUSD | `0x1aF0891884AD96De1Cb1CC3fDEd67842F00926bb` | [View on Explorer](https://sepolia.arbiscan.io/address/0x1aF0891884AD96De1Cb1CC3fDEd67842F00926bb) |
 
 ## Core Contracts
 

@@ -1,0 +1,10 @@
+{
+  "network": "arbitrumSepolia",
+  "token": "mAAPL",
+  "address": "0x7C32072A5f0C73f9a619a51fdF9A311AEABcD50e",
+  "decimals": 18,
+  "deployedAt": "2025-10-16T02:31:40.807Z",
+  "deployer": "0xBaB0D0892Bf8563B731f8e8970fE856ce9308292",
+  "txHash": "0xde82d0937aca42a56e4da92c94c199daf72a5c39e3b4ede0077a03ec99d30780",
+  "purpose": "Index token for AAPL/USD stock price (stub - no supply)"
+}

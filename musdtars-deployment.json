@@ -1,0 +1,10 @@
+{
+  "network": "arbitrumSepolia",
+  "token": "mUSDTARS",
+  "address": "0xed6890bE2409F0db06a00C809a298E2E06553BE1",
+  "decimals": 18,
+  "deployedAt": "2025-10-15T02:14:09.580Z",
+  "deployer": "0xBaB0D0892Bf8563B731f8e8970fE856ce9308292",
+  "txHash": "0xbb967939aa11540e215ff4ce6992f2edf5acec17379572a7fd5ba366380afe48",
+  "purpose": "Index token for USDT/ARS exchange rate (stub - no supply)"
+}

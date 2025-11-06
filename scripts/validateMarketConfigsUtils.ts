@@ -664,6 +664,54 @@ const recommendedMarketConfig = {
       expectedSwapImpactRatio: 10_000,
       expectedPositionImpactRatio: 20_000,
     },
+    "mTSLA:mUSD:mUSD": {
+      negativePositionImpactFactor: exponentToFloat("2e-9"),
+      negativeSwapImpactFactor: 0, // single token market
+      expectedSwapImpactRatio: 10_000,
+      expectedPositionImpactRatio: 20_000,
+    },
+    "mMETA:mUSD:mUSD": {
+      negativePositionImpactFactor: exponentToFloat("2e-9"),
+      negativeSwapImpactFactor: 0, // single token market
+      expectedSwapImpactRatio: 10_000,
+      expectedPositionImpactRatio: 20_000,
+    },
+    "mAAPL:mUSD:mUSD": {
+      negativePositionImpactFactor: exponentToFloat("2e-9"),
+      negativeSwapImpactFactor: 0, // single token market
+      expectedSwapImpactRatio: 10_000,
+      expectedPositionImpactRatio: 20_000,
+    },
+    "mUSDTARS:mUSD:mUSD": {
+      negativePositionImpactFactor: exponentToFloat("2e-9"),
+      negativeSwapImpactFactor: 0, // single token market
+      expectedSwapImpactRatio: 10_000,
+      expectedPositionImpactRatio: 20_000,
+    },
+    "mUSDTNGN:mUSD:mUSD": {
+      negativePositionImpactFactor: exponentToFloat("2e-9"), // Reverted to small impact factor
+      negativeSwapImpactFactor: 0, // single token market
+      expectedSwapImpactRatio: 10_000,
+      expectedPositionImpactRatio: 10_000, // Allow 1:1 ratio (negative = positive)
+    },
+    "mPKR:mUSD:mUSD": {
+      negativePositionImpactFactor: exponentToFloat("2e-9"),
+      negativeSwapImpactFactor: 0, // single token market
+      expectedSwapImpactRatio: 10_000,
+      expectedPositionImpactRatio: 20_000,
+    },
+    "mCOP:mUSD:mUSD": {
+      negativePositionImpactFactor: exponentToFloat("2e-9"),
+      negativeSwapImpactFactor: 0, // single token market
+      expectedSwapImpactRatio: 10_000,
+      expectedPositionImpactRatio: 20_000,
+    },
+    "mNVDA:mUSD:mUSD": {
+      negativePositionImpactFactor: exponentToFloat("2e-9"),
+      negativeSwapImpactFactor: 0, // single token market
+      expectedSwapImpactRatio: 10_000,
+      expectedPositionImpactRatio: 20_000,
+    },
   },
   botanix: {
     "BTC:pBTC:pBTC": {

@@ -3,7 +3,7 @@ const { ethers } = require("hardhat");
 async function main() {
     const [signer] = await ethers.getSigners();
     // The transaction hash from your cancelled order
-    const txHash = "0x94718f7684e15ced9a407161c49be6b854c7d11cffb7a7bc80f8df05926057ab";
+    const txHash = "0x581c818b74e3051db9af1948b5750d76011b77f06a338dbeb70ddfb6c55eadca";
 
     console.log("=== Decoding Order Cancellation ===\n");
     console.log("Transaction:", txHash);

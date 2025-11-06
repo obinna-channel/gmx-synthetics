@@ -232,6 +232,49 @@ const fundingRateConfig_SingleToken: FundingRateConfig = {
   thresholdForDecreaseFunding: 0,
 };
 
+// Simple static funding configs (no increase/decrease states)
+// Funding rate directly proportional to current OI imbalance
+const simpleFundingConfig_50pct: FundingRateConfig = {
+  // Static calculation: fundingRate = (imbalance %) × fundingFactor
+  fundingFactor: exponentToFloat("1.58e-8"), // Exactly 50% at 100% imbalance
+  fundingExponentFactor: decimalToFloat(1), // Linear scaling
+
+  minFundingFactorPerSecond: percentageToFloat("0.5%").div(SECONDS_PER_YEAR),
+  maxFundingFactorPerSecond: percentageToFloat("50%").div(SECONDS_PER_YEAR),
+
+  // Set to 0 to enable simple mode (no accumulation/ratcheting)
+  fundingIncreaseFactorPerSecond: decimalToFloat(0),
+  fundingDecreaseFactorPerSecond: decimalToFloat(0),
+  thresholdForStableFunding: decimalToFloat(0),
+  thresholdForDecreaseFunding: decimalToFloat(0),
+};
+
+const simpleFundingConfig_75pct: FundingRateConfig = {
+  fundingFactor: exponentToFloat("2.38e-8"), // Exactly 75% at 100% imbalance
+  fundingExponentFactor: decimalToFloat(1),
+
+  minFundingFactorPerSecond: percentageToFloat("1%").div(SECONDS_PER_YEAR),
+  maxFundingFactorPerSecond: percentageToFloat("75%").div(SECONDS_PER_YEAR),
+
+  fundingIncreaseFactorPerSecond: decimalToFloat(0),
+  fundingDecreaseFactorPerSecond: decimalToFloat(0),
+  thresholdForStableFunding: decimalToFloat(0),
+  thresholdForDecreaseFunding: decimalToFloat(0),
+};
+
+const simpleFundingConfig_100pct: FundingRateConfig = {
+  fundingFactor: exponentToFloat("3.17e-8"), // Exactly 100% at 100% imbalance
+  fundingExponentFactor: decimalToFloat(1),
+
+  minFundingFactorPerSecond: percentageToFloat("1%").div(SECONDS_PER_YEAR),
+  maxFundingFactorPerSecond: percentageToFloat("100%").div(SECONDS_PER_YEAR),
+
+  fundingIncreaseFactorPerSecond: decimalToFloat(0),
+  fundingDecreaseFactorPerSecond: decimalToFloat(0),
+  thresholdForStableFunding: decimalToFloat(0),
+  thresholdForDecreaseFunding: decimalToFloat(0),
+};
+
 type BorrowingRateConfig = Partial<{
   optimalUsageFactor: BigNumberish;
   baseBorrowingFactor: BigNumberish;
@@ -4863,8 +4906,8 @@ const config: {
     {
       tokens: {
         indexToken: "mTSLA", // TSLA stock index token
-        longToken: "USDT", // USDT for long collateral
-        shortToken: "USDT", // USDT for short collateral (single token market)
+        longToken: "mUSD", // mUSD for long collateral
+        shortToken: "mUSD", // mUSD for short collateral (single token market)
       },
 
       // Virtual IDs for cross-market references
@@ -4881,15 +4924,15 @@ const config: {
       ...borrowingRateConfig_HighMax_WithLowerBase,
 
       // Pool limits (same as mUSDTNGN market)
-      maxLongTokenPoolAmount: expandDecimals(500_000, 6), // 500k USDT max long pool
-      maxShortTokenPoolAmount: expandDecimals(500_000, 6), // 500k USDT max short pool
+      maxLongTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max long pool
+      maxShortTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max short pool
       maxPoolUsdForDeposit: decimalToFloat(500_000), // $500k max deposit
 
       // Open interest limits (same as mUSDTNGN market)
       maxOpenInterest: decimalToFloat(500_000), // $500k max OI per side
 
       // Position impact (stocks are more volatile, use linear impact)
-      positionImpactExponentFactor: exponentToFloat("1e0"), // Linear impact for single token
+      positionImpactExponentFactor: exponentToFloat("2e0"), // Linear impact for single token
       negativePositionImpactFactor: exponentToFloat("2e-9"), // 0.0000002%
       positivePositionImpactFactor: exponentToFloat("1e-9"), // 0.0000001%
 
@@ -4920,8 +4963,527 @@ const config: {
       minPnlFactorAfterAdl: percentageToFloat("77%"),
 
       // Position fees
-      positionFeeFactorForPositiveImpact: percentageToFloat("0.05%"), // 5 bps
-      positionFeeFactorForNegativeImpact: percentageToFloat("0.05%"), // 5 bps
+      positionFeeFactorForPositiveImpact: percentageToFloat("0.025%"), // 2.5 bps
+      positionFeeFactorForNegativeImpact: percentageToFloat("0.025%"), // 2.5 bps
+
+      // Liquidation fee (higher for single token)
+      liquidationFeeFactor: percentageToFloat("0.3%"),
+
+      // No atomic swap fees for single token markets
+      atomicSwapFeeFactor: bigNumberify(0),
+
+      // Position impact pool
+      positionImpactPoolDistributionRate: bigNumberify(0),
+      minPositionImpactPoolAmount: bigNumberify(0),
+    },
+    {
+      tokens: {
+        indexToken: "mMETA", // META stock index token
+        longToken: "mUSD", // mUSD for long collateral
+        shortToken: "mUSD", // mUSD for short collateral (single token market)
+      },
+
+      // Virtual IDs for cross-market references
+      virtualTokenIdForIndexToken: hashString("PERP:META/USD"),
+      virtualMarketId: hashString("STOCK:META/USD"),
+
+      // Base configuration for single-token market
+      ...singleTokenMarketConfig,
+
+      // Funding rate configuration for single token markets
+      ...fundingRateConfig_SingleToken,
+
+      // Borrowing rate configuration
+      ...borrowingRateConfig_HighMax_WithLowerBase,
+
+      // Pool limits (same as mUSDTNGN market)
+      maxLongTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max long pool
+      maxShortTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max short pool
+      maxPoolUsdForDeposit: decimalToFloat(500_000), // $500k max deposit
+
+      // Open interest limits (same as mUSDTNGN market)
+      maxOpenInterest: decimalToFloat(500_000), // $500k max OI per side
+
+      // Position impact (stocks are more volatile, use linear impact)
+      positionImpactExponentFactor: exponentToFloat("2e0"), // Linear impact for single token
+      negativePositionImpactFactor: exponentToFloat("2e-9"), // 0.0000002%
+      positivePositionImpactFactor: exponentToFloat("1e-9"), // 0.0000001%
+
+      negativeMaxPositionImpactFactor: percentageToFloat("1%"), // 1% max slippage
+      positiveMaxPositionImpactFactor: percentageToFloat("1%"),
+
+      // Swap impact - zero for single token markets
+      negativeSwapImpactFactor: bigNumberify(0),
+      positiveSwapImpactFactor: bigNumberify(0),
+
+      // Leverage settings (conservative for stocks)
+      minCollateralFactor: percentageToFloat("1%"), // 100x max leverage
+      minCollateralFactorForLiquidation: percentageToFloat("1%"),
+
+      minCollateralFactorForOpenInterestMultiplier: exponentToFloat("5e-9"),
+
+      // Reserve factors (same as mUSDTNGN market)
+      reserveFactor: percentageToFloat("500%"), // 5x OI reserve
+      openInterestReserveFactor: percentageToFloat("500%"), // 5x OI reserve
+
+      // PnL factors
+      maxPnlFactorForTraders: percentageToFloat("90%"),
+      maxPnlFactorForDeposits: percentageToFloat("90%"),
+      maxPnlFactorForWithdrawals: percentageToFloat("70%"),
+
+      // ADL thresholds
+      maxPnlFactorForAdl: percentageToFloat("85%"),
+      minPnlFactorAfterAdl: percentageToFloat("77%"),
+
+      // Position fees
+      positionFeeFactorForPositiveImpact: percentageToFloat("0.025%"), // 2.5 bps
+      positionFeeFactorForNegativeImpact: percentageToFloat("0.025%"), // 2.5 bps
+
+      // Liquidation fee (higher for single token)
+      liquidationFeeFactor: percentageToFloat("0.3%"),
+
+      // No atomic swap fees for single token markets
+      atomicSwapFeeFactor: bigNumberify(0),
+
+      // Position impact pool
+      positionImpactPoolDistributionRate: bigNumberify(0),
+      minPositionImpactPoolAmount: bigNumberify(0),
+    },
+    {
+      tokens: {
+        indexToken: "mAAPL", // AAPL stock index token
+        longToken: "mUSD", // mUSD for long collateral
+        shortToken: "mUSD", // mUSD for short collateral (single token market)
+      },
+
+      // Virtual IDs for cross-market references
+      virtualTokenIdForIndexToken: hashString("PERP:AAPL/USD"),
+      virtualMarketId: hashString("STOCK:AAPL/USD"),
+
+      // Base configuration for single-token market
+      ...singleTokenMarketConfig,
+
+      // Funding rate configuration for single token markets
+      ...fundingRateConfig_SingleToken,
+
+      // Borrowing rate configuration
+      ...borrowingRateConfig_HighMax_WithLowerBase,
+
+      // Pool limits (same as TSLA market)
+      maxLongTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max long pool
+      maxShortTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max short pool
+      maxPoolUsdForDeposit: decimalToFloat(500_000), // $500k max deposit
+
+      // Open interest limits (same as TSLA market)
+      maxOpenInterest: decimalToFloat(500_000), // $500k max OI per side
+
+      // Position impact (stocks are more volatile, use linear impact)
+      positionImpactExponentFactor: exponentToFloat("2e0"), // Linear impact for single token
+      negativePositionImpactFactor: exponentToFloat("2e-9"), // 0.0000002%
+      positivePositionImpactFactor: exponentToFloat("1e-9"), // 0.0000001%
+
+      negativeMaxPositionImpactFactor: percentageToFloat("1%"), // 1% max slippage
+      positiveMaxPositionImpactFactor: percentageToFloat("1%"),
+
+      // Swap impact - zero for single token markets
+      negativeSwapImpactFactor: bigNumberify(0),
+      positiveSwapImpactFactor: bigNumberify(0),
+
+      // Leverage settings (conservative for stocks)
+      minCollateralFactor: percentageToFloat("1%"), // 100x max leverage
+      minCollateralFactorForLiquidation: percentageToFloat("1%"),
+
+      minCollateralFactorForOpenInterestMultiplier: exponentToFloat("5e-9"),
+
+      // Reserve factors (same as TSLA market)
+      reserveFactor: percentageToFloat("500%"), // 5x OI reserve
+      openInterestReserveFactor: percentageToFloat("500%"), // 5x OI reserve
+
+      // PnL factors
+      maxPnlFactorForTraders: percentageToFloat("90%"),
+      maxPnlFactorForDeposits: percentageToFloat("90%"),
+      maxPnlFactorForWithdrawals: percentageToFloat("70%"),
+
+      // ADL thresholds
+      maxPnlFactorForAdl: percentageToFloat("85%"),
+      minPnlFactorAfterAdl: percentageToFloat("77%"),
+
+      // Position fees
+      positionFeeFactorForPositiveImpact: percentageToFloat("0.025%"), // 2.5 bps
+      positionFeeFactorForNegativeImpact: percentageToFloat("0.025%"), // 2.5 bps
+
+      // Liquidation fee (higher for single token)
+      liquidationFeeFactor: percentageToFloat("0.3%"),
+
+      // No atomic swap fees for single token markets
+      atomicSwapFeeFactor: bigNumberify(0),
+
+      // Position impact pool
+      positionImpactPoolDistributionRate: bigNumberify(0),
+      minPositionImpactPoolAmount: bigNumberify(0),
+    },
+    {
+      tokens: {
+        indexToken: "mUSDTARS", // USDT/ARS exchange rate index token
+        longToken: "mUSD", // mUSD for long collateral
+        shortToken: "mUSD", // mUSD for short collateral (single token market)
+      },
+
+      // Virtual IDs for cross-market references
+      virtualTokenIdForIndexToken: hashString("PERP:USDTARS"),
+      virtualMarketId: hashString("CRYPTO:USDTARS"),
+
+      // Base configuration for single-token market
+      ...singleTokenMarketConfig,
+
+      // Funding rate configuration for single token markets
+      ...fundingRateConfig_SingleToken,
+
+      // Borrowing rate configuration
+      ...borrowingRateConfig_LowMax_WithLowerBase,
+
+      // Pool limits (same as mUSDTNGN market)
+      maxLongTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max long pool
+      maxShortTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max short pool
+      maxPoolUsdForDeposit: decimalToFloat(500_000), // $500k max deposit
+
+      // Open interest limits (same as mUSDTNGN market)
+      maxOpenInterest: decimalToFloat(500_000), // $500k max OI per side
+
+      // Position impact factors (same as mUSDTNGN)
+      negativePositionImpactFactor: exponentToFloat("2e-9"), // 0.0000005%
+      positivePositionImpactFactor: exponentToFloat("1e-9"), // 0.00000025%
+      positionImpactExponentFactor: exponentToFloat("2e0"), // Quadratic impact
+
+      // Max position impact caps
+      negativeMaxPositionImpactFactor: percentageToFloat("0.3%"), // 0.3% max slippage
+      positiveMaxPositionImpactFactor: percentageToFloat("0.3%"), // 0.3% max slippage
+
+      // Swap impact (0 for single token market)
+      negativeSwapImpactFactor: bigNumberify(0),
+      positiveSwapImpactFactor: bigNumberify(0),
+
+      // Minimum collateral factor (determines max leverage)
+      minCollateralFactor: percentageToFloat("1.9%"), // 50x max leverage
+      minCollateralFactorForLiquidation: percentageToFloat("1%"), // Liquidation at 100x
+
+      // Dynamic min collateral based on OI
+      minCollateralFactorForOpenInterestMultiplier: exponentToFloat("5e-9"),
+
+      // Reserve factors (conservative for initial launch)
+      reserveFactor: percentageToFloat("500%"), // 5x OI reserve
+      openInterestReserveFactor: percentageToFloat("500%"), // 5x OI reserve
+
+      // PnL factors
+      maxPnlFactorForTraders: percentageToFloat("80%"), // Traders can take max 80% of pool
+      maxPnlFactorForDeposits: percentageToFloat("80%"), // Same for deposits
+      maxPnlFactorForWithdrawals: percentageToFloat("77%"), // More conservative for withdrawals
+
+      // ADL (Auto-Deleveraging) thresholds
+      maxPnlFactorForAdl: percentageToFloat("80%"),
+      minPnlFactorAfterAdl: percentageToFloat("77%"),
+
+      // Position fees
+      positionFeeFactorForPositiveImpact: percentageToFloat("0.025%"), // 2.5 bps
+      positionFeeFactorForNegativeImpact: percentageToFloat("0.025%"), // 2.5 bps
+
+      // Liquidation fee (higher for single token)
+      liquidationFeeFactor: percentageToFloat("0.3%"),
+
+      // No atomic swap fees for single token markets
+      atomicSwapFeeFactor: bigNumberify(0),
+
+      // Position impact pool
+      positionImpactPoolDistributionRate: bigNumberify(0),
+      minPositionImpactPoolAmount: bigNumberify(0),
+    },
+    {
+      tokens: {
+        indexToken: "mPKR", // USDT/PKR exchange rate index token
+        longToken: "mUSD", // mUSD for long collateral
+        shortToken: "mUSD", // mUSD for short collateral (single token market)
+      },
+
+      // Virtual IDs for cross-market references
+      virtualTokenIdForIndexToken: hashString("PERP:USDTPKR"),
+      virtualMarketId: hashString("CRYPTO:USDTPKR"),
+
+      // Base configuration for single-token market
+      ...singleTokenMarketConfig,
+
+      // Funding rate configuration for single token markets
+      ...fundingRateConfig_SingleToken,
+
+      // Borrowing rate configuration
+      ...borrowingRateConfig_LowMax_WithLowerBase,
+
+      // Pool limits (same as mUSDTARS market)
+      maxLongTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max long pool
+      maxShortTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max short pool
+      maxPoolUsdForDeposit: decimalToFloat(500_000), // $500k max deposit
+
+      // Open interest limits (same as mUSDTARS market)
+      maxOpenInterest: decimalToFloat(500_000), // $500k max OI per side
+
+      // Position impact factors (same as mUSDTARS)
+      negativePositionImpactFactor: exponentToFloat("2e-9"), // 0.0000005%
+      positivePositionImpactFactor: exponentToFloat("1e-9"), // 0.00000025%
+      positionImpactExponentFactor: exponentToFloat("2e0"), // Quadratic impact
+
+      // Max position impact caps
+      negativeMaxPositionImpactFactor: percentageToFloat("0.3%"), // 0.3% max slippage
+      positiveMaxPositionImpactFactor: percentageToFloat("0.3%"), // 0.3% max slippage
+
+      // Swap impact (0 for single token market)
+      negativeSwapImpactFactor: bigNumberify(0),
+      positiveSwapImpactFactor: bigNumberify(0),
+
+      // Minimum collateral factor (determines max leverage)
+      minCollateralFactor: percentageToFloat("1.9%"), // 50x max leverage
+      minCollateralFactorForLiquidation: percentageToFloat("1%"), // Liquidation at 100x
+
+      // Dynamic min collateral based on OI
+      minCollateralFactorForOpenInterestMultiplier: exponentToFloat("5e-9"),
+
+      // Reserve factors (conservative for initial launch)
+      reserveFactor: percentageToFloat("500%"), // 5x OI reserve
+      openInterestReserveFactor: percentageToFloat("500%"), // 5x OI reserve
+
+      // PnL factors
+      maxPnlFactorForTraders: percentageToFloat("80%"), // Traders can take max 80% of pool
+      maxPnlFactorForDeposits: percentageToFloat("80%"), // Same for deposits
+      maxPnlFactorForWithdrawals: percentageToFloat("77%"), // More conservative for withdrawals
+
+      // ADL (Auto-Deleveraging) thresholds
+      maxPnlFactorForAdl: percentageToFloat("80%"),
+      minPnlFactorAfterAdl: percentageToFloat("77%"),
+
+      // Position fees
+      positionFeeFactorForPositiveImpact: percentageToFloat("0.025%"), // 2.5 bps
+      positionFeeFactorForNegativeImpact: percentageToFloat("0.025%"), // 2.5 bps
+
+      // Liquidation fee (higher for single token)
+      liquidationFeeFactor: percentageToFloat("0.3%"),
+
+      // No atomic swap fees for single token markets
+      atomicSwapFeeFactor: bigNumberify(0),
+
+      // Position impact pool
+      positionImpactPoolDistributionRate: bigNumberify(0),
+      minPositionImpactPoolAmount: bigNumberify(0),
+    },
+    {
+      tokens: {
+        indexToken: "mCOP", // USDT/COP exchange rate index token
+        longToken: "mUSD", // mUSD for long collateral
+        shortToken: "mUSD", // mUSD for short collateral (single token market)
+      },
+
+      // Virtual IDs for cross-market references
+      virtualTokenIdForIndexToken: hashString("PERP:USDTCOP"),
+      virtualMarketId: hashString("CRYPTO:USDTCOP"),
+
+      // Base configuration for single-token market
+      ...singleTokenMarketConfig,
+
+      // Funding rate configuration for single token markets
+      ...fundingRateConfig_SingleToken,
+
+      // Borrowing rate configuration
+      ...borrowingRateConfig_LowMax_WithLowerBase,
+
+      // Pool limits (same as mUSDTARS market)
+      maxLongTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max long pool
+      maxShortTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max short pool
+      maxPoolUsdForDeposit: decimalToFloat(500_000), // $500k max deposit
+
+      // Open interest limits (same as mUSDTARS market)
+      maxOpenInterest: decimalToFloat(500_000), // $500k max OI per side
+
+      // Position impact factors (same as mUSDTARS)
+      negativePositionImpactFactor: exponentToFloat("2e-9"), // 0.0000005%
+      positivePositionImpactFactor: exponentToFloat("1e-9"), // 0.00000025%
+      positionImpactExponentFactor: exponentToFloat("2e0"), // Quadratic impact
+
+      // Max position impact caps
+      negativeMaxPositionImpactFactor: percentageToFloat("0.3%"), // 0.3% max slippage
+      positiveMaxPositionImpactFactor: percentageToFloat("0.3%"), // 0.3% max slippage
+
+      // Swap impact (0 for single token market)
+      negativeSwapImpactFactor: bigNumberify(0),
+      positiveSwapImpactFactor: bigNumberify(0),
+
+      // Minimum collateral factor (determines max leverage)
+      minCollateralFactor: percentageToFloat("1.9%"), // 50x max leverage
+      minCollateralFactorForLiquidation: percentageToFloat("1%"), // Liquidation at 100x
+
+      // Dynamic min collateral based on OI
+      minCollateralFactorForOpenInterestMultiplier: exponentToFloat("5e-9"),
+
+      // Reserve factors (conservative for initial launch)
+      reserveFactor: percentageToFloat("500%"), // 5x OI reserve
+      openInterestReserveFactor: percentageToFloat("500%"), // 5x OI reserve
+
+      // PnL factors
+      maxPnlFactorForTraders: percentageToFloat("80%"), // Traders can take max 80% of pool
+      maxPnlFactorForDeposits: percentageToFloat("80%"), // Same for deposits
+      maxPnlFactorForWithdrawals: percentageToFloat("77%"), // More conservative for withdrawals
+
+      // ADL (Auto-Deleveraging) thresholds
+      maxPnlFactorForAdl: percentageToFloat("80%"),
+      minPnlFactorAfterAdl: percentageToFloat("77%"),
+
+      // Position fees
+      positionFeeFactorForPositiveImpact: percentageToFloat("0.025%"), // 2.5 bps
+      positionFeeFactorForNegativeImpact: percentageToFloat("0.025%"), // 2.5 bps
+
+      // Liquidation fee (higher for single token)
+      liquidationFeeFactor: percentageToFloat("0.3%"),
+
+      // No atomic swap fees for single token markets
+      atomicSwapFeeFactor: bigNumberify(0),
+
+      // Position impact pool
+      positionImpactPoolDistributionRate: bigNumberify(0),
+      minPositionImpactPoolAmount: bigNumberify(0),
+    },
+    {
+      tokens: {
+        indexToken: "mUSDTNGN", // USDT/NGN exchange rate index token
+        longToken: "mUSD", // mUSD for long collateral
+        shortToken: "mUSD", // mUSD for short collateral (single token market)
+      },
+
+      // Virtual IDs for cross-market references
+      virtualTokenIdForIndexToken: hashString("PERP:USDTNGN"),
+      virtualMarketId: hashString("CRYPTO:USDTNGN/USD"),
+
+      // Base configuration for single-token market
+      ...singleTokenMarketConfig,
+
+      // Funding rate configuration - simple static 100% max
+      ...simpleFundingConfig_100pct,
+
+      // Borrowing rate configuration
+      ...borrowingRateConfig_LowMax_WithLowerBase,
+
+      // Pool limits (same as mUSDTARS market)
+      maxLongTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max long pool
+      maxShortTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max short pool
+      maxPoolUsdForDeposit: decimalToFloat(500_000), // $500k max deposit
+
+      // Open interest limits (same as mUSDTARS market)
+      maxOpenInterest: decimalToFloat(500_000), // $500k max OI per side
+
+      // Position impact factors (same as mUSDTARS)
+      negativePositionImpactFactor: exponentToFloat("2e-9"), // 0.0000005%
+      positivePositionImpactFactor: exponentToFloat("1e-9"), // 0.00000025%
+      positionImpactExponentFactor: exponentToFloat("2e0"), // Quadratic impact
+
+      // Max position impact caps
+      negativeMaxPositionImpactFactor: percentageToFloat("0.3%"), // 0.3% max slippage
+      positiveMaxPositionImpactFactor: percentageToFloat("0.3%"), // 0.3% max slippage
+
+      // Swap impact (0 for single token market)
+      negativeSwapImpactFactor: bigNumberify(0),
+      positiveSwapImpactFactor: bigNumberify(0),
+
+      // Minimum collateral factor (determines max leverage)
+      minCollateralFactor: percentageToFloat("1.9%"), // 50x max leverage
+      minCollateralFactorForLiquidation: percentageToFloat("1%"), // Liquidation at 100x
+
+      // Dynamic min collateral based on OI
+      minCollateralFactorForOpenInterestMultiplier: exponentToFloat("5e-9"),
+
+      // Reserve factors (conservative for initial launch)
+      reserveFactor: percentageToFloat("500%"), // 5x OI reserve
+      openInterestReserveFactor: percentageToFloat("500%"), // 5x OI reserve
+
+      // PnL factors
+      maxPnlFactorForTraders: percentageToFloat("80%"), // Traders can take max 80% of pool
+      maxPnlFactorForDeposits: percentageToFloat("80%"), // Same for deposits
+      maxPnlFactorForWithdrawals: percentageToFloat("77%"), // More conservative for withdrawals
+
+      // ADL (Auto-Deleveraging) thresholds
+      maxPnlFactorForAdl: percentageToFloat("80%"),
+      minPnlFactorAfterAdl: percentageToFloat("77%"),
+
+      // Position fees
+      positionFeeFactorForPositiveImpact: percentageToFloat("0.025%"), // 2.5 bps
+      positionFeeFactorForNegativeImpact: percentageToFloat("0.025%"), // 2.5 bps
+
+      // Liquidation fee (higher for single token)
+      liquidationFeeFactor: percentageToFloat("0.3%"),
+
+      // No atomic swap fees for single token markets
+      atomicSwapFeeFactor: bigNumberify(0),
+
+      // Position impact pool
+      positionImpactPoolDistributionRate: bigNumberify(0),
+      minPositionImpactPoolAmount: bigNumberify(0),
+    },
+    {
+      tokens: {
+        indexToken: "mNVDA", // NVDA stock index token
+        longToken: "mUSD", // mUSD for long collateral
+        shortToken: "mUSD", // mUSD for short collateral (single token market)
+      },
+
+      // Virtual IDs for cross-market references
+      virtualTokenIdForIndexToken: hashString("PERP:NVDA/USD"),
+      virtualMarketId: hashString("STOCK:NVDA/USD"),
+
+      // Base configuration for single-token market
+      ...singleTokenMarketConfig,
+
+      // Funding rate configuration for single token markets
+      ...fundingRateConfig_SingleToken,
+
+      // Borrowing rate configuration
+      ...borrowingRateConfig_HighMax_WithLowerBase,
+
+      // Pool limits (same as mTSLA market)
+      maxLongTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max long pool
+      maxShortTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max short pool
+      maxPoolUsdForDeposit: decimalToFloat(500_000), // $500k max deposit
+
+      // Open interest limits (same as mTSLA market)
+      maxOpenInterest: decimalToFloat(500_000), // $500k max OI per side
+
+      // Position impact (stocks are more volatile, use linear impact)
+      positionImpactExponentFactor: exponentToFloat("2e0"), // Linear impact for single token
+      negativePositionImpactFactor: exponentToFloat("2e-9"), // 0.0000002%
+      positivePositionImpactFactor: exponentToFloat("1e-9"), // 0.0000001%
+
+      negativeMaxPositionImpactFactor: percentageToFloat("1%"), // 1% max slippage
+      positiveMaxPositionImpactFactor: percentageToFloat("1%"),
+
+      // Swap impact - zero for single token markets
+      negativeSwapImpactFactor: bigNumberify(0),
+      positiveSwapImpactFactor: bigNumberify(0),
+
+      // Leverage settings (conservative for stocks)
+      minCollateralFactor: percentageToFloat("1%"), // 100x max leverage
+      minCollateralFactorForLiquidation: percentageToFloat("1%"),
+
+      minCollateralFactorForOpenInterestMultiplier: exponentToFloat("5e-9"),
+
+      // Reserve factors (same as mTSLA market)
+      reserveFactor: percentageToFloat("500%"), // 5x OI reserve
+      openInterestReserveFactor: percentageToFloat("500%"), // 5x OI reserve
+
+      // PnL factors
+      maxPnlFactorForTraders: percentageToFloat("90%"),
+      maxPnlFactorForDeposits: percentageToFloat("90%"),
+      maxPnlFactorForWithdrawals: percentageToFloat("70%"),
+
+      // ADL thresholds
+      maxPnlFactorForAdl: percentageToFloat("85%"),
+      minPnlFactorAfterAdl: percentageToFloat("77%"),
+
+      // Position fees
+      positionFeeFactorForPositiveImpact: percentageToFloat("0.025%"), // 2.5 bps
+      positionFeeFactorForNegativeImpact: percentageToFloat("0.025%"), // 2.5 bps
 
       // Liquidation fee (higher for single token)
       liquidationFeeFactor: percentageToFloat("0.3%"),

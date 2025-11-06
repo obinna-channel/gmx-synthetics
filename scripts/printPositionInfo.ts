@@ -27,6 +27,13 @@ function getArbitrumValues() {
   };
 }
 
+function getArbitrumSepoliaValues() {
+  return {
+    oracleApi: "https://arbitrum-api.gmxinfra.io/", // Use arbitrum mainnet API for now
+    referralStorageAddress: undefined, // Will use deployed ReferralStorage
+  };
+}
+
 function getValues(): {
   oracleApi: string;
   referralStorageAddress?: string;
@@ -37,6 +44,8 @@ function getValues(): {
     return getArbibtrumGoerliValues();
   } else if (hre.network.name === "arbitrum") {
     return getArbitrumValues();
+  } else if (hre.network.name === "arbitrumSepolia") {
+    return getArbitrumSepoliaValues();
   }
   throw new Error("Unsupported network");
 }
