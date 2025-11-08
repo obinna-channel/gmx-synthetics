@@ -5136,8 +5136,8 @@ const config: {
       // Base configuration for single-token market
       ...singleTokenMarketConfig,
 
-      // Funding rate configuration for single token markets
-      ...fundingRateConfig_SingleToken,
+      // Funding rate configuration - simple static 100% max
+      ...simpleFundingConfig_100pct,
 
       // Borrowing rate configuration
       ...borrowingRateConfig_LowMax_WithLowerBase,
@@ -5211,8 +5211,8 @@ const config: {
       // Base configuration for single-token market
       ...singleTokenMarketConfig,
 
-      // Funding rate configuration for single token markets
-      ...fundingRateConfig_SingleToken,
+      // Funding rate configuration - simple static 100% max
+      ...simpleFundingConfig_100pct,
 
       // Borrowing rate configuration
       ...borrowingRateConfig_LowMax_WithLowerBase,
@@ -5286,8 +5286,8 @@ const config: {
       // Base configuration for single-token market
       ...singleTokenMarketConfig,
 
-      // Funding rate configuration for single token markets
-      ...fundingRateConfig_SingleToken,
+      // Funding rate configuration - simple static 100% max
+      ...simpleFundingConfig_100pct,
 
       // Borrowing rate configuration
       ...borrowingRateConfig_LowMax_WithLowerBase,
@@ -5373,7 +5373,7 @@ const config: {
       maxPoolUsdForDeposit: decimalToFloat(500_000), // $500k max deposit
 
       // Open interest limits (same as mUSDTARS market)
-      maxOpenInterest: decimalToFloat(500_000), // $500k max OI per side
+      maxOpenInterest: decimalToFloat(750_000), // $500k max OI per side
 
       // Position impact factors (same as mUSDTARS)
       negativePositionImpactFactor: exponentToFloat("2e-9"), // 0.0000005%

@@ -271,9 +271,13 @@ async function main() {
     // Calculate max reserved: Pool × Reserve Factor
     const totalPoolUSD = totalPoolAmount.mul(ethers.BigNumber.from(10).pow(24)); // Convert to 30 decimals
 
-    // Max reserved per side
-    const maxReservedLong = totalPoolUSD.mul(oiReserveFactorLong).div(ethers.BigNumber.from(10).pow(30));
-    const maxReservedShort = totalPoolUSD.mul(oiReserveFactorShort).div(ethers.BigNumber.from(10).pow(30));
+    // For same-token markets, pool is split between long and short
+    const poolDivisor = isSameToken ? 2 : 1;
+    const poolPerSideUSD = totalPoolUSD.div(poolDivisor);
+
+    // Max reserved per side = (Pool / divisor) × Reserve Factor
+    const maxReservedLong = poolPerSideUSD.mul(oiReserveFactorLong).div(ethers.BigNumber.from(10).pow(30));
+    const maxReservedShort = poolPerSideUSD.mul(oiReserveFactorShort).div(ethers.BigNumber.from(10).pow(30));
 
     // Utilization per side
     const utilizationLong = maxReservedLong.gt(0)
@@ -288,7 +292,10 @@ async function main() {
     console.log(`  Reserved USD (Short): $${ethers.utils.formatUnits(reservedShort, 30)}`);
     console.log(`  Total Reserved:       $${ethers.utils.formatUnits(totalReserved, 30)}`);
     console.log(``);
-    console.log(`  Pool Amount:          $${ethers.utils.formatUnits(totalPoolUSD, 30)}`);
+    console.log(`  Total Pool Amount:    $${ethers.utils.formatUnits(totalPoolUSD, 30)}`);
+    if (isSameToken) {
+        console.log(`  Pool per side:        $${ethers.utils.formatUnits(poolPerSideUSD, 30)} (split for same-token market)`);
+    }
     console.log(`  OI Reserve Factor:    ${ethers.utils.formatUnits(oiReserveFactorLong, 30)} (${(parseFloat(ethers.utils.formatUnits(oiReserveFactorLong, 30)) * 100).toFixed(0)}%)`);
     console.log(``);
     console.log(`  Max Reserved (Long):  $${ethers.utils.formatUnits(maxReservedLong, 30)}`);
