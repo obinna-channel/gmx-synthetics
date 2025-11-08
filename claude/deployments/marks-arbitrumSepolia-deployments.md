@@ -58,6 +58,7 @@ This deployment is a fork of GMX V2 for the Marks protocol, creating synthetic N
 | ExchangeRouter | `0x3B33708e9b8242999459EB9b4756C24c846e5936` | [View on Explorer](https://sepolia.arbiscan.io/address/0x3B33708e9b8242999459EB9b4756C24c846e5936) |
 | MarketFactory | `0x32697b40be5537c7cF198a898a09BE11b14ce8bE` | [View on Explorer](https://sepolia.arbiscan.io/address/0x32697b40be5537c7cF198a898a09BE11b14ce8bE) |
 | Oracle | `0xE89d94669f49D278cCD094A084139eB6639C0a93` | [View on Explorer](https://sepolia.arbiscan.io/address/0xE89d94669f49D278cCD094A084139eB6639C0a93) |
+| MockOracleProvider | `0x5D85d4acd35ffD0daD76C5eB0da3d7e53e20cCC5` | [View on Explorer](https://sepolia.arbiscan.io/address/0x5D85d4acd35ffD0daD76C5eB0da3d7e53e20cCC5) |
 | OracleStore | `0xBc2408eF555c05A471A8242ef640061910EA4FD0` | [View on Explorer](https://sepolia.arbiscan.io/address/0xBc2408eF555c05A471A8242ef640061910EA4FD0) |
 | RoleStore | `0x4943c063691259B677f3D7BC808C9C3090321EbB` | [View on Explorer](https://sepolia.arbiscan.io/address/0x4943c063691259B677f3D7BC808C9C3090321EbB) |
 | Router | `0x6C71eD3bE6D3966F34162Cbda0195a6778096fAc` | [View on Explorer](https://sepolia.arbiscan.io/address/0x6C71eD3bE6D3966F34162Cbda0195a6778096fAc) |
