@@ -910,10 +910,7 @@ class LiquidationMonitor:
             # Get market configuration for token addresses
             market_config = self.keeper.MARKETS.get(market)
             if not market_config:
-                # Fallback to default market
-                market = self.keeper.mUSDTNGN_MARKET
-                market_config = self.keeper.MARKETS[market]
-                market_prices = self.get_market_prices_for_reader(market)
+                raise ValueError(f"Failed to identify market config for market: {market}")
 
             # Check if position is liquidatable via Reader contract (market-aware)
             (
