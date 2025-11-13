@@ -696,12 +696,13 @@ class LiquidationMonitor:
 
         try:
             # Fetch all position keys from DataStore (non-blocking)
+            cache_updated_at = time.time()
             position_keys = await self.fetch_all_position_keys()
 
             if len(position_keys) == 0:
                 print(f"   No positions found in DataStore")
                 self.position_cache = []
-                self.cache_updated_at = time.time()
+                self.cache_updated_at = cache_updated_at
                 return
 
             # Get details for each position and filter active ones (non-blocking)
@@ -713,7 +714,7 @@ class LiquidationMonitor:
 
             # Update cache
             self.position_cache = active_positions
-            self.cache_updated_at = time.time()
+            self.cache_updated_at = cache_updated_at
 
             print(f"   ✅ Cache updated: {len(active_positions)} active positions")
 
@@ -895,7 +896,7 @@ class LiquidationMonitor:
         except Exception as e:
             print(f"   ❌ Error scanning positions: {e}")
 
-    async def check_and_liquidate(self, position_key, market, account, is_long):
+    async def check_and_liquidate(self, position_key, market, account, is_long) -> bool:
         """Check if a position is liquidatable and execute if needed"""
 
         # Skip if already executing
@@ -2166,7 +2167,7 @@ class OrderKeeper:
         else:
             return "UNKNOWN"
 
-    def check_trigger_condition(self, order, current_price):
+    def check_trigger_condition(self, order, current_price) -> bool:
         """
         Check if a conditional order's trigger condition is met
 
@@ -2230,8 +2231,9 @@ class OrderKeeper:
                 return current_price_decimal <= trigger_price_decimal
             else:
                 return current_price_decimal >= trigger_price_decimal
-
-        return False
+            
+        else:
+            raise ValueError(f"Unexpected order type: {order_type}")
 
     async def update_mock_provider_prices(self, market_address=None) -> bool:
         """
@@ -2646,8 +2648,8 @@ class OrderKeeper:
                     print(f"   Current Price: {price:.4f}")
 
                     # Remove from conditional orders
-                    if order_key in self.conditional_orders:
-                        del self.conditional_orders[order_key]
+                    assert order_key in self.conditional_orders, f"Expected order {order_key} to be in conditional orders."
+                    del self.conditional_orders[order_key]
 
                     # Execute the order
                     await self.execute_order(order_key, order)
