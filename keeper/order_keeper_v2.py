@@ -25,6 +25,7 @@ Example:
 
 import asyncio
 import json
+from typing import Union
 import websockets
 import ssl
 import certifi
@@ -1828,17 +1829,18 @@ class OrderKeeper:
             skipped_frozen = 0
             skipped_executing = 0
             skipped_invalid = 0
+            skipped_untracked = 0
             skipped_old = 0
             failed_fetch = 0
 
             # Fetch and classify each order in parallel
-            async def process_order(order_key_bytes):
+            async def process_order(order_key_bytes: Union[str, bytes]):
                 """Process a single recovered order"""
                 nonlocal recovered_market, recovered_conditional, skipped_frozen
                 nonlocal skipped_executing, skipped_invalid, skipped_old, failed_fetch
 
                 # Convert bytes32 to hex string
-                order_key = order_key_bytes.hex() if isinstance(order_key_bytes, bytes) else order_key_bytes
+                order_key: str = order_key_bytes.hex() if isinstance(order_key_bytes, bytes) else order_key_bytes
                 if not order_key.startswith('0x'):
                     order_key = '0x' + order_key
 
@@ -1857,6 +1859,7 @@ class OrderKeeper:
                 # Skip orders from untracked markets (silently)
                 market_address = order.get('market')
                 if market_address not in self.MARKETS:
+                    skipped_untracked += 1
                     return
 
                 # Skip orders created before cutoff date
@@ -1884,6 +1887,9 @@ class OrderKeeper:
                 elif order_class == 'INVALID':
                     skipped_invalid += 1
 
+                else:
+                    raise ValueError(f"Unexpected order class: {order_class}")
+
             # Process all orders in parallel (with rate limiting)
             CONCURRENT_LIMIT = 5  # Process 5 orders at a time to avoid overwhelming RPC
 
@@ -1901,9 +1907,12 @@ class OrderKeeper:
             print(f"   ⏸️  Frozen orders skipped: {skipped_frozen}")
             print(f"   🔄 Already executing orders skipped: {skipped_executing}")
             print(f"   ⚠️  Invalid orders skipped: {skipped_invalid}")
+            print(f"      Untracked markets orders skipped: {skipped_untracked}")
             print(f"   ❌ Failed to fetch: {failed_fetch}")
             print(f"   ✅ Total recovered: {recovered_market + recovered_conditional}")
             print("=" * 60 + "\n")
+
+            assert recovered_market + recovered_conditional + skipped_frozen + skipped_executing + skipped_invalid + skipped_untracked + skipped_old + failed_fetch == len(all_order_keys), "Failed to account for all orders."
 
             # If we recovered market orders, process them
             if recovered_market > 0:
