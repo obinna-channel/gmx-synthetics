@@ -2221,7 +2221,7 @@ class OrderKeeper:
 
         return False
 
-    async def update_mock_provider_prices(self, market_address=None):
+    async def update_mock_provider_prices(self, market_address=None) -> bool:
         """
         Update prices on MockOracleProvider using live price feed data
 
@@ -2266,6 +2266,7 @@ class OrderKeeper:
                 tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
 
                 # Store transaction info
+                # TODO Rewrite this using pattern-matching.
                 token_name = (
                     "mUSD"
                     if token_address.lower() == self.mUSD.lower()
@@ -2307,7 +2308,7 @@ class OrderKeeper:
                 nonce += 1
 
             # Now wait for all confirmations IN PARALLEL
-            async def wait_for_receipt(tx_hash, token_name, price, token_address):
+            async def wait_for_receipt(tx_hash, token_name, price, token_address) -> bool:
                 """Wait for a single transaction receipt"""
                 try:
                     # Use asyncio to run the blocking call in executor
@@ -2407,6 +2408,7 @@ class OrderKeeper:
         if collateral_token:
             collateral_lower = collateral_token.lower()
             if collateral_lower not in seen:
+                seen.add(collateral_lower)
                 unique_tokens.append(collateral_token)
 
         # Build oracle params with deduplicated tokens
@@ -2444,6 +2446,7 @@ class OrderKeeper:
         print(f"   Type: {order['orderTypeName']}")
 
         # Move to executing
+        assert order_key not in self.executing_orders, f"Order {order_key} is already executing."
         self.executing_orders[order_key] = order
         if order_key in self.market_orders:
             del self.market_orders[order_key]
@@ -2502,8 +2505,8 @@ class OrderKeeper:
                 )
 
                 # Remove from executing
-                if order_key in self.executing_orders:
-                    del self.executing_orders[order_key]
+                assert order_key in self.executing_orders, f"Expected order {order_key} to be in executing orders."
+                del self.executing_orders[order_key]
 
                 return receipt
             else:
@@ -2532,8 +2535,8 @@ class OrderKeeper:
                 }
 
                 # Remove from executing
-                if order_key in self.executing_orders:
-                    del self.executing_orders[order_key]
+                assert order_key in self.executing_orders, f"Expected order {order_key} to be in executing orders."
+                del self.executing_orders[order_key]
 
                 return None
 
@@ -2542,7 +2545,7 @@ class OrderKeeper:
         if not self.market_orders:
             return
 
-        # Process orders one by one (could be parallelized in production)
+        # Process orders serially (could be parallelized in production)
         for order_key, order in list(self.market_orders.items()):
             await self.execute_order(order_key, order)
 
