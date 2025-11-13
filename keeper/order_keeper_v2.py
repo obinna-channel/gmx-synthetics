@@ -26,7 +26,7 @@ Example:
 import asyncio
 from decimal import Decimal
 import json
-from typing import Union
+from typing import Literal, Union
 import websockets
 import ssl
 import certifi
@@ -907,7 +907,9 @@ class LiquidationMonitor:
             # Get market configuration for token addresses
             market_config = self.keeper.MARKETS.get(market)
             if not market_config:
-                raise ValueError(f"Failed to identify market config for market: {market}")
+                raise ValueError(
+                    f"Failed to identify market config for market: {market}"
+                )
 
             # Check if position is liquidatable via Reader contract (market-aware)
             (
@@ -969,7 +971,7 @@ class LiquidationMonitor:
 
     async def execute_liquidation(
         self, market, account, is_long, retry_count=0, max_retries=3
-    ):
+    ) -> bool:
         """Execute a liquidation transaction with retry logic. Returns True if successful, False otherwise."""
 
         try:
@@ -979,7 +981,7 @@ class LiquidationMonitor:
 
             if current_gas_price > max_gas_price:
                 print(
-                    f"   ⚠️  Gas price too high ({current_gas_price/10**9:.2f} gwei > {self.MAX_GAS_PRICE_GWEI} gwei)"
+                    f"   ⚠️  Gas price too high ({current_gas_price/Decimal(10**9):.2f} gwei > {self.MAX_GAS_PRICE_GWEI} gwei)"
                 )
                 print(f"   Skipping liquidation")
                 return False
@@ -1013,6 +1015,7 @@ class LiquidationMonitor:
                 lambda: self.keeper.liquidation_handler.functions.executeLiquidation(
                     Web3.to_checksum_address(account),
                     Web3.to_checksum_address(market),
+                    # TODO[PR] How do we know that mUSD is always the collateral token?
                     Web3.to_checksum_address(self.keeper.mUSD),  # collateralToken
                     is_long,
                     oracle_params,
@@ -1806,6 +1809,11 @@ class OrderKeeper:
                 * 10**24,  # mUSD = $1 (single token market)
             }
 
+        else:
+            raise ValueError(
+                f"Unknown market type {market_config['type']} for market {market_address}"
+            )
+
         return prices
 
     def generate_order_data_key(self, order_key, field):
@@ -2003,6 +2011,7 @@ class OrderKeeper:
             skipped_frozen = 0
             skipped_executing = 0
             skipped_invalid = 0
+            skipped_unknown = 0
             skipped_untracked = 0
             skipped_old = 0
             failed_fetch = 0
@@ -2069,6 +2078,9 @@ class OrderKeeper:
                 elif order_class == "INVALID":
                     skipped_invalid += 1
 
+                elif order_class == "UNKNOWN":
+                    skipped_unknown += 1
+
                 else:
                     raise ValueError(f"Unexpected order class: {order_class}")
 
@@ -2091,7 +2103,8 @@ class OrderKeeper:
             print(f"   ⏸️  Frozen orders skipped: {skipped_frozen}")
             print(f"   🔄 Already executing orders skipped: {skipped_executing}")
             print(f"   ⚠️  Invalid orders skipped: {skipped_invalid}")
-            print(f"      Untracked markets orders skipped: {skipped_untracked}")
+            print(f"   ❓ Unknown-type orders skipped: {skipped_unknown}")
+            print(f"   😣  Untracked-markets orders skipped: {skipped_untracked}")
             print(f"   ❌ Failed to fetch: {failed_fetch}")
             print(f"   ✅ Total recovered: {recovered_market + recovered_conditional}")
             print("=" * 60 + "\n")
@@ -2102,6 +2115,7 @@ class OrderKeeper:
                 + skipped_frozen
                 + skipped_executing
                 + skipped_invalid
+                + skipped_unknown
                 + skipped_untracked
                 + skipped_old
                 + failed_fetch
@@ -2122,7 +2136,9 @@ class OrderKeeper:
             traceback.print_exc()
             print("\n⚠️  Continuing without recovery - will rely on WebSocket events\n")
 
-    def classify_order(self, order):
+    def classify_order(
+        self, order
+    ) -> Literal["MARKET", "CONDITIONAL", "UNKNOWN", "INVALID"]:
         """Classify order as market (immediate execution) or conditional (wait for trigger)"""
 
         order_type = order.get("orderType", 0)
@@ -2133,7 +2149,7 @@ class OrderKeeper:
         )
         if market_address == "0x0000000000000000000000000000000000000000":
             print(
-                f"   ⚠️  Skipping order with invalid market address (likely malformed liquidation swap)"
+                f"   ⚠️  Encountered order with invalid market address (likely malformed liquidation swap)"
             )
             return "INVALID"
 
@@ -2225,7 +2241,7 @@ class OrderKeeper:
                 return current_price_decimal <= trigger_price_decimal
             else:
                 return current_price_decimal >= trigger_price_decimal
-            
+
         else:
             raise ValueError(f"Unexpected order type: {order_type}")
 
@@ -2332,22 +2348,24 @@ class OrderKeeper:
                     if receipt.status == 1:
                         # Display price in human-readable format (USD terms)
                         if token_name == "mUSD":
-                            usd_value = price / (10**24)  # Convert to USD
+                            usd_value = price / Decimal(10**24)  # Convert to USD
                             print(
                                 f"  ✅ {token_name} price updated: {usd_value:.2f} USD"
                             )
                         elif token_name == "mNGN":
-                            usd_value = price / (10**12)  # Convert to USD
+                            usd_value = price / Decimal(10**12)  # Convert to USD
                             print(
                                 f"  ✅ {token_name} price updated: {usd_value:.9f} USD"
                             )
                         elif token_name == "mUSDTNGN":
-                            rate_value = price / (10**12)  # Convert to exchange rate
+                            rate_value = price / Decimal(
+                                10**12
+                            )  # Convert to exchange rate
                             print(
                                 f"  ✅ {token_name} price updated: {rate_value:.0f} (USDT/NGN rate)"
                             )
                         elif token_name == "mTSLA":
-                            stock_price = price / (10**12)  # Convert to USD
+                            stock_price = price / Decimal(10**12)  # Convert to USD
                             print(
                                 f"  ✅ {token_name} price updated: ${stock_price:.2f}"
                             )
@@ -2642,7 +2660,9 @@ class OrderKeeper:
                     print(f"   Current Price: {price:.4f}")
 
                     # Remove from conditional orders
-                    assert order_key in self.conditional_orders, f"Expected order {order_key} to be in conditional orders."
+                    assert (
+                        order_key in self.conditional_orders
+                    ), f"Expected order {order_key} to be in conditional orders."
                     del self.conditional_orders[order_key]
 
                     # Execute the order
@@ -2734,8 +2754,14 @@ class OrderKeeper:
 
                 print("   📝 Added to conditional orders watch list")
 
-            else:
+            elif order_class == "INVALID":
+                print(f"   ⚠️  Invalid order detected - skipping execution")
+
+            elif order_class == "UNKNOWN":
                 print(f"   ❓ Unknown order type: {order['orderType']}")
+
+            else:
+                raise ValueError(f"Unexpected order class: {order_class}")
 
         print("-" * 60)
 
@@ -2834,6 +2860,7 @@ class OrderKeeper:
                 response = await ws.recv()
                 response_data = json.loads(response)
 
+                # TODO Validate `response_data` using Pydantic.
                 if "result" in response_data:
                     subscription_id = response_data["result"]
                     subscription_ids[subscription_id] = event_name
@@ -2852,6 +2879,7 @@ class OrderKeeper:
                     message = await ws.recv()
                     data = json.loads(message)
 
+                    # TODO Validate `data` using Pydantic.
                     if "params" in data and "result" in data["params"]:
                         event_data = data["params"]["result"]
 
