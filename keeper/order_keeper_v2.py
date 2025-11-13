@@ -804,10 +804,7 @@ class LiquidationMonitor:
         # Get market config to know which tokens to use
         market_config = self.keeper.MARKETS.get(market)
         if not market_config:
-            # Fallback to default market
-            market = self.keeper.mUSDTNGN_MARKET
-            market_config = self.keeper.MARKETS[market]
-            prices = self.keeper.get_current_prices(market)
+            raise ValueError(f"Failed to identify market config for market: {market}")
 
         # Market prices struct for Reader
         # Structure: ((minIndex, maxIndex), (minLong, maxLong), (minShort, maxShort))
