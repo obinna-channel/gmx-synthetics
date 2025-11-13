@@ -24,6 +24,7 @@ Example:
 """
 
 import asyncio
+from decimal import Decimal
 import json
 from typing import Union
 import websockets
@@ -524,7 +525,7 @@ class LiquidationMonitor:
         self.SCAN_INTERVAL = int(
             os.getenv("LIQUIDATION_SCAN_INTERVAL", "30")
         )  # seconds
-        self.PRICE_TRIGGER_THRESHOLD = float(
+        self.PRICE_TRIGGER_THRESHOLD = Decimal(
             os.getenv("LIQUIDATION_PRICE_TRIGGER", "0.01")
         )  # 1%
         self.ENABLED = os.getenv("ENABLE_LIQUIDATIONS", "true").lower() == "true"
@@ -1166,6 +1167,9 @@ class LiquidationMonitor:
         if pair in self.last_price:
             old_price = self.last_price[pair]
             price_change = abs(price - old_price) / old_price
+            assert isinstance(
+                price_change, Decimal
+            ), f"Expected price change to be of Decimal type, but got {type(price_change)}"
 
             if price_change >= self.PRICE_TRIGGER_THRESHOLD:
                 print(
@@ -1284,9 +1288,10 @@ class OrderKeeper:
         self.PRICE_FEED_URL = "https://marks-server-a58cc19eb539.herokuapp.com/"
 
         # Shared price cache and update queue
+        # TODO Refactor to keep track of stock vs. non-stock prices separately.
         self.price_cache = (
             {}
-        )  # pair/ticker -> {'price': float, 'timestamp': str, 'data': dict}
+        )  # pair/ticker -> {'price': Decimal, 'timestamp': str, 'data': dict}
         self.price_update_queue = (
             asyncio.Queue()
         )  # Queue of (pair/ticker, price) tuples
@@ -1765,6 +1770,9 @@ class OrderKeeper:
         if market_config["type"] == "crypto":
             # Crypto market: index token is exchange rate, collateral tokens are currencies
             exchange_rate = current_price
+            assert isinstance(
+                exchange_rate, Decimal
+            ), f"Expected exchange rate to be of Decimal type, but got {type(exchange_rate)}"
 
             # Check if this is a single-token market (long == short)
             if market_config["longToken"] == market_config["shortToken"]:
@@ -1900,16 +1908,20 @@ class OrderKeeper:
                 print(f"     Type: {order['orderTypeName']}")
                 print(f"     Market: {order['market']}")
                 print(f"     Account: {order['account']}")
-                print(f"     Size Delta USD: {order['sizeDeltaUsd'] / 10**30:.2f}")
+                print(
+                    f"     Size Delta USD: {order['sizeDeltaUsd'] / Decimal(10**30):.2f}"
+                )
                 print(f"     Collateral Token: {order['initialCollateralToken']}")
                 print(
                     f"     Collateral Amount: {order['initialCollateralDeltaAmount']}"
                 )
                 print(f"     Is Long: {order['isLong']}")
-                print(f"     Acceptable Price: {order['acceptablePrice'] / 10**12:.6f}")
+                print(
+                    f"     Acceptable Price: {order['acceptablePrice'] / Decimal(10**12):.6f}"
+                )
                 print(f"     Min Output Amount: {order['minOutputAmount']}")
                 print(
-                    f"     Trigger Price: {order['triggerPrice'] / 10**12:.4f}"
+                    f"     Trigger Price: {order['triggerPrice'] / Decimal(10**12):.4f}"
                     if order["triggerPrice"] > 0
                     else "     Trigger Price: N/A (Market Order)"
                 )
@@ -2171,53 +2183,53 @@ class OrderKeeper:
             return False
 
         # Convert prices to same precision for comparison
-        trigger_price_float = trigger_price / 10**12
-        current_price_float = current_price
+        trigger_price_decimal = trigger_price / Decimal(10**12)
+        current_price_decimal = current_price
 
         # Limit Increase: Enter position when price is favorable
         if order_type == OrderType.LimitIncrease.value:
             if is_long:
                 # Long: Execute when price drops to or below trigger (buy the dip)
-                return current_price_float <= trigger_price_float
+                return current_price_decimal <= trigger_price_decimal
             else:
                 # Short: Execute when price rises to or above trigger (short the top)
-                return current_price_float >= trigger_price_float
+                return current_price_decimal >= trigger_price_decimal
 
         # Limit Decrease (Take Profit): Close position when price target hit
         elif order_type == OrderType.LimitDecrease.value:
             if is_long:
                 # Long TP: Execute when price rises to or above trigger (take profits)
-                return current_price_float >= trigger_price_float
+                return current_price_decimal >= trigger_price_decimal
             else:
                 # Short TP: Execute when price drops to or below trigger (take profits)
-                return current_price_float <= trigger_price_float
+                return current_price_decimal <= trigger_price_decimal
 
         # Stop Loss Decrease: Close position to limit losses
         elif order_type == OrderType.StopLossDecrease.value:
             if is_long:
                 # Long SL: Execute when price drops to or below trigger (stop losses)
-                return current_price_float <= trigger_price_float
+                return current_price_decimal <= trigger_price_decimal
             else:
                 # Short SL: Execute when price rises to or above trigger (stop losses)
-                return current_price_float >= trigger_price_float
+                return current_price_decimal >= trigger_price_decimal
 
         # Stop Increase: Enter position when momentum confirms (breakout strategy)
         elif order_type == OrderType.StopIncrease.value:
             if is_long:
                 # Long: Execute when price rises to or above trigger (buy breakout)
-                return current_price_float >= trigger_price_float
+                return current_price_decimal >= trigger_price_decimal
             else:
                 # Short: Execute when price drops to or below trigger (short breakdown)
-                return current_price_float <= trigger_price_float
+                return current_price_decimal <= trigger_price_decimal
 
         # Limit Swap: Token swap at favorable price
         elif order_type == OrderType.LimitSwap.value:
             # Swap when price hits target (direction depends on swap type)
             # For now, use same logic as limit increase
             if is_long:
-                return current_price_float <= trigger_price_float
+                return current_price_decimal <= trigger_price_decimal
             else:
-                return current_price_float >= trigger_price_float
+                return current_price_decimal >= trigger_price_decimal
 
         return False
 
@@ -2308,7 +2320,9 @@ class OrderKeeper:
                 nonce += 1
 
             # Now wait for all confirmations IN PARALLEL
-            async def wait_for_receipt(tx_hash, token_name, price, token_address) -> bool:
+            async def wait_for_receipt(
+                tx_hash, token_name, price, token_address
+            ) -> bool:
                 """Wait for a single transaction receipt"""
                 try:
                     # Use asyncio to run the blocking call in executor
@@ -2446,7 +2460,9 @@ class OrderKeeper:
         print(f"   Type: {order['orderTypeName']}")
 
         # Move to executing
-        assert order_key not in self.executing_orders, f"Order {order_key} is already executing."
+        assert (
+            order_key not in self.executing_orders
+        ), f"Order {order_key} is already executing."
         self.executing_orders[order_key] = order
         if order_key in self.market_orders:
             del self.market_orders[order_key]
@@ -2505,7 +2521,9 @@ class OrderKeeper:
                 )
 
                 # Remove from executing
-                assert order_key in self.executing_orders, f"Expected order {order_key} to be in executing orders."
+                assert (
+                    order_key in self.executing_orders
+                ), f"Expected order {order_key} to be in executing orders."
                 del self.executing_orders[order_key]
 
                 return receipt
@@ -2535,7 +2553,9 @@ class OrderKeeper:
                 }
 
                 # Remove from executing
-                assert order_key in self.executing_orders, f"Expected order {order_key} to be in executing orders."
+                assert (
+                    order_key in self.executing_orders
+                ), f"Expected order {order_key} to be in executing orders."
                 del self.executing_orders[order_key]
 
                 return None
@@ -2592,7 +2612,7 @@ class OrderKeeper:
                         print(f"   🔍 Order {order_key[:10]}... market={order_market}")
                         print(f"      Mapped to pair: {order_pair}")
                         print(
-                            f"      Trigger price: {order.get('triggerPrice', 0) / 10**12:.4f}"
+                            f"      Trigger price: {order.get('triggerPrice', 0) / Decimal(10**12):.4f}"
                         )
                         print(f"      Is long: {order.get('isLong')}")
                         orders_to_check.append((order_key, order))
@@ -2620,7 +2640,9 @@ class OrderKeeper:
                     print(f"   Pair: {pair}")
                     print(f"   Order Key: {order_key}")
                     print(f"   Type: {order['orderTypeName']}")
-                    print(f"   Trigger Price: {order['triggerPrice'] / 10**12:.4f}")
+                    print(
+                        f"   Trigger Price: {order['triggerPrice'] / Decimal(10**12):.4f}"
+                    )
                     print(f"   Current Price: {price:.4f}")
 
                     # Remove from conditional orders
@@ -2698,20 +2720,20 @@ class OrderKeeper:
                 if order["orderType"] == OrderType.LimitIncrease.value:
                     if order["isLong"]:
                         print(
-                            f"   📈 Will execute when price <= {order['triggerPrice'] / 10**12:.4f}"
+                            f"   📈 Will execute when price <= {order['triggerPrice'] / Decimal(10**12):.4f}"
                         )
                     else:
                         print(
-                            f"   📉 Will execute when price >= {order['triggerPrice'] / 10**12:.4f}"
+                            f"   📉 Will execute when price >= {order['triggerPrice'] / Decimal(10**12):.4f}"
                         )
                 elif order["orderType"] == OrderType.StopLossDecrease.value:
                     if order["isLong"]:
                         print(
-                            f"   🛑 Stop loss will trigger when price <= {order['triggerPrice'] / 10**12:.4f}"
+                            f"   🛑 Stop loss will trigger when price <= {order['triggerPrice'] / Decimal(10**12):.4f}"
                         )
                     else:
                         print(
-                            f"   🛑 Stop loss will trigger when price >= {order['triggerPrice'] / 10**12:.4f}"
+                            f"   🛑 Stop loss will trigger when price >= {order['triggerPrice'] / Decimal(10**12):.4f}"
                         )
 
                 print("   📝 Added to conditional orders watch list")
