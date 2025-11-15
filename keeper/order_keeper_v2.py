@@ -1163,8 +1163,9 @@ class LiquidationMonitor:
         """Handle price updates from price feed - trigger scan if significant move"""
 
         if pair in self.last_price:
-            old_price = self.last_price[pair]
-            price_change = abs(price - old_price) / old_price
+            old_price = Decimal(str(self.last_price[pair]))
+            current_price = Decimal(str(price))
+            price_change = abs(current_price - old_price) / old_price
             assert isinstance(
                 price_change, Decimal
             ), f"Expected price change to be of Decimal type, but got {type(price_change)}"
@@ -1762,6 +1763,9 @@ class OrderKeeper:
                 f"No price available for {price_pair}. Price feeds may not be connected yet or the market is not being monitored."
             )
 
+        # Convert to Decimal for precise calculations
+        current_price = Decimal(str(current_price))
+
         # Build prices dict based on market type
         prices = {}
 
@@ -2020,7 +2024,8 @@ class OrderKeeper:
             async def process_order(order_key_bytes: Union[str, bytes]):
                 """Process a single recovered order"""
                 nonlocal recovered_market, recovered_conditional, skipped_frozen
-                nonlocal skipped_executing, skipped_invalid, skipped_old, failed_fetch
+                nonlocal skipped_executing, skipped_invalid, skipped_unknown
+                nonlocal skipped_untracked, skipped_old, failed_fetch
 
                 # Convert bytes32 to hex string
                 order_key: str = (
@@ -2473,13 +2478,14 @@ class OrderKeeper:
         print(f"   Order Key: {order_key}")
         print(f"   Type: {order['orderTypeName']}")
 
-        # Move to executing
-        assert (
-            order_key not in self.executing_orders
-        ), f"Order {order_key} is already executing."
-        self.executing_orders[order_key] = order
-        if order_key in self.market_orders:
-            del self.market_orders[order_key]
+        # Move to executing (only on first attempt, not retries)
+        if retry_count == 0:
+            assert (
+                order_key not in self.executing_orders
+            ), f"Order {order_key} is already executing."
+            self.executing_orders[order_key] = order
+            if order_key in self.market_orders:
+                del self.market_orders[order_key]
 
         try:
             # Step 1: Update prices on MockProvider (market-aware)
@@ -2594,6 +2600,9 @@ class OrderKeeper:
             try:
                 # Wait for next price update from queue
                 pair, price = await self.price_update_queue.get()
+
+                # Convert price to Decimal for precise calculations
+                price = Decimal(str(price))
 
                 # Notify liquidation monitor of price update
                 await self.liquidation_monitor.on_price_update(pair, price)
