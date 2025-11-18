@@ -2031,7 +2031,8 @@ class OrderKeeper:
             async def process_order(order_key_bytes: Union[str, bytes]):
                 """Process a single recovered order"""
                 nonlocal recovered_market, recovered_conditional, skipped_frozen
-                nonlocal skipped_executing, skipped_invalid, skipped_old, failed_fetch
+                nonlocal skipped_executing, skipped_invalid, skipped_unknown
+                nonlocal skipped_untracked, skipped_old, failed_fetch
 
                 # Convert bytes32 to hex string
                 order_key: str = (
