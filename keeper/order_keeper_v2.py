@@ -24,22 +24,22 @@ Example:
 """
 
 import asyncio
-from decimal import Decimal
 import json
-from typing import Literal, Union
-import websockets
-import ssl
-import certifi
-from web3 import Web3
-from eth_abi import encode
-from datetime import datetime
 import os
-from dotenv import load_dotenv
+import ssl
+from datetime import datetime, timedelta
+from decimal import Decimal
 from enum import Enum
-import socketio
-import aiohttp
+from typing import Any, Literal, Union
 from zoneinfo import ZoneInfo
-from datetime import timedelta
+
+import aiohttp
+import certifi
+import socketio
+import websockets
+from dotenv import load_dotenv
+from eth_abi import encode
+from web3 import Web3
 
 # Load environment variables
 load_dotenv()
@@ -102,7 +102,18 @@ class OrderType(Enum):
     StopIncrease = 8
 
 
-class PriceFeedManager:
+class DecimalPriceMixin:
+    @staticmethod
+    def to_decimal(price: Any) -> Decimal:
+        if isinstance(price, Decimal):
+            pass
+        elif isinstance(price, (str, int, float)):
+            price = Decimal(str(price))
+        else:
+            raise ValueError(f"Unexpected price type: {type(price)}")
+
+
+class PriceFeedManager(DecimalPriceMixin):
     """Manages Socket.IO connection to Marks price feed server"""
 
     def __init__(self, socket_url, pairs_to_watch, price_cache, price_update_queue):
@@ -158,7 +169,7 @@ class PriceFeedManager:
         timestamp = data.get("timestamp")
 
         if pair:
-            price = price_data.get("price")
+            price = self.to_decimal(price_data.get("price"))
 
             # Update cache
             self.price_cache[pair] = {
@@ -291,7 +302,7 @@ class PriceFeedManager:
         return self.price_cache.get(pair)
 
 
-class StockPriceFeedManager:
+class StockPriceFeedManager(DecimalPriceMixin):
     """Manages Socket.IO connection to Marks server for real-time stock prices"""
 
     def __init__(self, socket_url, tickers_to_watch, price_cache, price_update_queue):
@@ -346,7 +357,7 @@ class StockPriceFeedManager:
         timestamp = data.get("timestamp")
 
         if symbol:
-            price = price_data.get("price")
+            price = self.to_decimal(price_data.get("price"))
 
             # Update cache
             self.price_cache[symbol] = {
