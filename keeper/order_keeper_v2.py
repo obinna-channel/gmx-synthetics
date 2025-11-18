@@ -2485,13 +2485,14 @@ class OrderKeeper:
         print(f"   Order Key: {order_key}")
         print(f"   Type: {order['orderTypeName']}")
 
-        # Move to executing
-        assert (
-            order_key not in self.executing_orders
-        ), f"Order {order_key} is already executing."
-        self.executing_orders[order_key] = order
-        if order_key in self.market_orders:
-            del self.market_orders[order_key]
+        # Move to executing if this is the first attempt at executing.
+        if retry_count == 0:
+            assert (
+                order_key not in self.executing_orders
+            ), f"Order {order_key} is already executing."
+            self.executing_orders[order_key] = order
+            if order_key in self.market_orders:
+                del self.market_orders[order_key]
 
         try:
             # Step 1: Update prices on MockProvider (market-aware)
