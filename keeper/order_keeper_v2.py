@@ -30,7 +30,7 @@ import ssl
 from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Literal, Union
+from typing import Any, Literal, Tuple, Union
 from zoneinfo import ZoneInfo
 
 import aiohttp
@@ -548,9 +548,6 @@ class LiquidationMonitor:
         # State tracking
         self.last_scan_time = 0
         self.last_price = {}
-        self.executing_liquidations = (
-            set()
-        )  # Track ongoing liquidations to prevent duplicates
         self.failed_liquidations = (
             {}
         )  # Track failed attempts: {position_key: {'attempts': int, 'last_attempt': timestamp, 'error': str}}
@@ -749,7 +746,7 @@ class LiquidationMonitor:
 
         return self.position_cache
 
-    def should_retry_liquidation(self, position_key):
+    def should_retry_liquidation(self, position_key) -> Tuple[bool, str]:
         """
         Check if we should retry liquidating a position based on previous failures and backoff
         Returns (should_retry: bool, reason: str)
@@ -906,10 +903,6 @@ class LiquidationMonitor:
 
     async def check_and_liquidate(self, position_key, market, account, is_long) -> bool:
         """Check if a position is liquidatable and execute if needed"""
-
-        # Skip if already executing
-        if position_key in self.executing_liquidations:
-            return False
 
         try:
             # Get current prices
