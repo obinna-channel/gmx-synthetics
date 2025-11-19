@@ -2636,12 +2636,12 @@ class OrderKeeper:
                     # Only check orders for the updated pair
                     if order_pair == pair:
                         # Debug: Show market mapping lookup for relevant orders only
-                        print(f"   🔍 Order {order_key[:10]}... market={order_market}")
-                        print(f"      Mapped to pair: {order_pair}")
-                        print(
-                            f"      Trigger price: {order.get('triggerPrice', 0) / Decimal(10**12):.4f}"
-                        )
-                        print(f"      Is long: {order.get('isLong')}")
+                        # print(f"   🔍 Order {order_key[:10]}... market={order_market}")
+                        # print(f"      Mapped to pair: {order_pair}")
+                        # print(
+                        #     f"      Trigger price: {order.get('triggerPrice', 0) / Decimal(10**12):.4f}"
+                        # )
+                        # print(f"      Is long: {order.get('isLong')}")
                         orders_to_check.append((order_key, order))
 
                 # Skip if no orders for this pair
