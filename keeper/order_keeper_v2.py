@@ -106,9 +106,9 @@ class DecimalPriceMixin:
     @staticmethod
     def to_decimal(price: Any) -> Decimal:
         if isinstance(price, Decimal):
-            pass
+            return price
         elif isinstance(price, (str, int, float)):
-            price = Decimal(str(price))
+            return Decimal(str(price))
         else:
             raise ValueError(f"Unexpected price type: {type(price)}")
 
@@ -243,7 +243,7 @@ class PriceFeedManager(DecimalPriceMixin):
                 if price_data and "price" in price_data:
                     # Cache the initial price
                     self.price_cache[pair] = {
-                        "price": price_data["price"],
+                        "price": self.to_decimal(price_data["price"]),
                         "timestamp": price_data.get("timestamp"),
                         "data": price_data,
                     }
@@ -452,7 +452,7 @@ class StockPriceFeedManager(DecimalPriceMixin):
                 if price_data and "price" in price_data:
                     # Cache the initial price
                     self.price_cache[ticker] = {
-                        "price": price_data["price"],
+                        "price": self.to_decimal(price_data["price"]),
                         "timestamp": price_data.get("timestamp"),
                         "data": price_data,
                     }
