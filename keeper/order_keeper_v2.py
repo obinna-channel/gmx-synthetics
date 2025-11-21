@@ -911,16 +911,20 @@ class LiquidationMonitor:
         if position_key in self.executing_liquidations:
             return False
 
+        # Get market configuration for token addresses
+        market_config = self.keeper.MARKETS.get(market)
+        if not market_config:
+            return False
+
+        # Skip stock liquidations outside market hours
+        market_name = market_config.get("name")
+        if market_name in ["TSLA", "AAPL", "NVDA", "META"]:
+            if not is_market_open():
+                return False
+
         try:
             # Get current prices
             market_prices = self.get_market_prices_for_reader(market)
-
-            # Get market configuration for token addresses
-            market_config = self.keeper.MARKETS.get(market)
-            if not market_config:
-                raise ValueError(
-                    f"Failed to identify market config for market: {market}"
-                )
 
             # Check if position is liquidatable via Reader contract (market-aware)
             (
