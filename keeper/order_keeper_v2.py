@@ -2277,6 +2277,10 @@ class OrderKeeper:
         # Get current prices from live feed (market-aware)
         prices = self.get_current_prices(market_address)
 
+        # Skip mUSD - it's a stablecoin always worth $1, no need to update every time
+        # This reduces gas costs and transaction count
+        prices = {k: v for k, v in prices.items() if k.lower() != self.mUSD.lower()}
+
         try:
             # Get initial nonce once for all transactions (including pending to avoid conflicts)
             nonce = self.w3.eth.get_transaction_count(self.account.address, "pending")
