@@ -2474,13 +2474,15 @@ class OrderKeeper:
                 }
             )
 
-            # Add 20% buffer
-            return int(estimated * 1.2)
+            # Add 50% buffer (increased from 20%)
+            # Extra buffer needed for auto-cancel of pending orders when positions fully close
+            # The auto-cancel phase requires MIN_HANDLE_EXECUTION_ERROR_GAS (1.2M) remaining
+            return int(estimated * 1.5)
 
         except Exception as e:
             print(f"  ⚠️  Gas estimation failed: {e}")
-            # Return default gas limit
-            return 3000000
+            # Return default gas limit (increased from 3M to 5M for safety)
+            return 5000000
 
     async def execute_order(self, order_key, order, retry_count=0, max_retries=3):
         """Execute an order with retry logic"""
