@@ -1270,6 +1270,7 @@ class OrderKeeper:
         self.mPKR = "0xDC7e9F5a3D337161880d084131BC16214f2F8EBD"  # mPKR index token (18 decimals)
         self.mCOP = "0x8d9C2d46d6ff665afb4deb6CBc1Ed5E31eB455b8"  # mCOP index token (18 decimals)
         self.USDT = "0x5fE0CA3aF9Cf758D7F4159295Fd1Cd6a05562bb6"  # USDT (6 decimals)
+        self.USDC = "0xe73B11Fb1e3eeEe8AF2a23079A4410Fe1B370548"  # USDC (6 decimals)
 
         # Market addresses
         self.mUSDTNGN_MARKET = "0x5E63276Caae0FF49b2762b98A1d37941AA50F804"  # Market 9: USDTNGN crypto market
@@ -1292,6 +1293,9 @@ class OrderKeeper:
         )
         self.mCOP_MARKET = (
             "0x53Ab653715F2A2E3e228f17fBe120F7BEe3d7B44"  # Market 15: COP crypto market
+        )
+        self.mUSDTNGN_USDC_MARKET = (
+            "0x0A9aaD88Ee9548b9aAe0526277982E730d2fBD38"  # Market 19: USDTNGN with USDC collateral
         )
 
         # MockOracleProvider address (will be loaded from file if exists)
@@ -1385,6 +1389,14 @@ class OrderKeeper:
                 "longToken": self.mUSD,
                 "shortToken": self.mUSD,
                 "pricePair": "USDTCOP",
+                "type": "crypto",
+            },
+            self.mUSDTNGN_USDC_MARKET: {
+                "name": "USDTNGN_USDC",
+                "indexToken": self.mUSDTNGN,
+                "longToken": self.USDC,
+                "shortToken": self.USDC,
+                "pricePair": "USDTNGN",
                 "type": "crypto",
             },
         }
@@ -2277,9 +2289,10 @@ class OrderKeeper:
         # Get current prices from live feed (market-aware)
         prices = self.get_current_prices(market_address)
 
-        # Skip mUSD - it's a stablecoin always worth $1, no need to update every time
+        # Skip mUSD and USDC - they're stablecoins always worth $1, no need to update every time
         # This reduces gas costs and transaction count
-        prices = {k: v for k, v in prices.items() if k.lower() != self.mUSD.lower()}
+        stablecoins = {self.mUSD.lower(), self.USDC.lower()}
+        prices = {k: v for k, v in prices.items() if k.lower() not in stablecoins}
 
         try:
             # Get initial nonce once for all transactions (including pending to avoid conflicts)
