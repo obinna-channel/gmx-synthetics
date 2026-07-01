@@ -13,10 +13,19 @@ contract MockOracleProvider is IOracleProvider {
     using Price for Price.Props;
 
     mapping(address => Price.Props) public prices;
+    mapping(address => bool) public isPriceUpdater;
     address public owner;
 
     modifier onlyOwner() {
         require(msg.sender == owner, "MockOracleProvider: only owner");
+        _;
+    }
+
+    modifier onlyOwnerOrPriceUpdater() {
+        require(
+            msg.sender == owner || isPriceUpdater[msg.sender],
+            "MockOracleProvider: unauthorized"
+        );
         _;
     }
 
@@ -48,14 +57,22 @@ contract MockOracleProvider is IOracleProvider {
         return false;
     }
 
-    function setPrice(address token, uint256 minPrice, uint256 maxPrice) external onlyOwner {
+    function grantPriceUpdater(address updater) external onlyOwner {
+        isPriceUpdater[updater] = true;
+    }
+
+    function revokePriceUpdater(address updater) external onlyOwner {
+        isPriceUpdater[updater] = false;
+    }
+
+    function setPrice(address token, uint256 minPrice, uint256 maxPrice) external onlyOwnerOrPriceUpdater {
         prices[token] = Price.Props({
             min: minPrice,
             max: maxPrice
         });
     }
 
-    function setPriceWithPrecision(address token, uint256 price) external onlyOwner {
+    function setPriceWithPrecision(address token, uint256 price) external onlyOwnerOrPriceUpdater {
         prices[token] = Price.Props({
             min: price,
             max: price

@@ -1389,6 +1389,13 @@ const config: {
       // No priceFeed needed - USDT is the base currency and always equals 1
       // GMX will treat it as stable = 1 by default for collateral calculations
     },
+    USDC: {
+      address: "0xe73B11Fb1e3eeEe8AF2a23079A4410Fe1B370548",
+      decimals: 6,
+      transferGasLimit: 200 * 1000,
+      dataStreamFeedId: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      dataStreamFeedDecimals: 18,
+    },
     sNGN: {
       address: "0xd66e60AA5b6982649a116e6944Daec22b15468Ad", // Newly deployed sNGN token
       decimals: 18, // You deployed sNGN with 18 decimals

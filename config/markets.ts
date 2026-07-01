@@ -178,6 +178,35 @@ const fundingRateConfig_Low: FundingRateConfig = {
   thresholdForDecreaseFunding: 0,
 };
 
+// Simple static funding config - 25% max at full imbalance (fixed rate, no dynamic ramp)
+const simpleFundingConfig_25pct: FundingRateConfig = {
+  fundingFactor: exponentToFloat("7.925e-9"), // Exactly 25% at 100% imbalance (half of 1.585e-8)
+  fundingExponentFactor: decimalToFloat(1),
+
+  minFundingFactorPerSecond: percentageToFloat("0.25%").div(SECONDS_PER_YEAR),
+  maxFundingFactorPerSecond: percentageToFloat("25%").div(SECONDS_PER_YEAR),
+
+  fundingIncreaseFactorPerSecond: decimalToFloat(0),
+  fundingDecreaseFactorPerSecond: decimalToFloat(0),
+  thresholdForStableFunding: decimalToFloat(0),
+  thresholdForDecreaseFunding: decimalToFloat(0),
+};
+
+// Simple static funding config - 40% max at full imbalance (fixed rate, no dynamic ramp).
+// Mirrors the mainnet prod NGN market (simpleFundingConfig_40pct) for sandbox/prod parity.
+const simpleFundingConfig_40pct: FundingRateConfig = {
+  fundingFactor: exponentToFloat("1.268e-8"), // Exactly 40% at 100% imbalance
+  fundingExponentFactor: decimalToFloat(1),
+
+  minFundingFactorPerSecond: percentageToFloat("0.5%").div(SECONDS_PER_YEAR),
+  maxFundingFactorPerSecond: percentageToFloat("40%").div(SECONDS_PER_YEAR),
+
+  fundingIncreaseFactorPerSecond: decimalToFloat(0),
+  fundingDecreaseFactorPerSecond: decimalToFloat(0),
+  thresholdForStableFunding: decimalToFloat(0),
+  thresholdForDecreaseFunding: decimalToFloat(0),
+};
+
 const fundingRateConfig_Default: FundingRateConfig = {
   // increase to 90% at 100% imbalance (100%/0%) in 3 hours
   // increase to 90% at 20% imbalance (60.%/40%) in 15 hours
@@ -297,6 +326,21 @@ const borrowingRateConfig_HighMax_WithLowerBase: BorrowingRateConfig = {
   baseBorrowingFactor: percentageToFloat("50%").div(SECONDS_PER_YEAR),
   aboveOptimalUsageBorrowingFactor: percentageToFloat("130%").div(SECONDS_PER_YEAR),
 };
+
+// Linear borrow model (kink OFF): rate scales linearly with utilization.
+// Spread this in, then set `borrowingFactor` per-market (see reservableLinearBorrowingFactor).
+const borrowingRateConfig_Linear_NoKink: BorrowingRateConfig = {
+  optimalUsageFactor: bigNumberify(0),
+  baseBorrowingFactor: bigNumberify(0),
+  aboveOptimalUsageBorrowingFactor: bigNumberify(0),
+};
+
+// Linear (no-kink) borrowingFactor priced as % of reservable liquidity:
+// rate/yr = ratePercent when fully reserved (reserved == pool * reserveFactor), scaling linearly to 0.
+// Pass the market's reserveFactor so the two stay coupled (no hardcoded multiple).
+function reservableLinearBorrowingFactor(ratePercent: string, reserveFactor: BigNumberish) {
+  return percentageToFloat(ratePercent).mul(decimalToFloat(1)).div(SECONDS_PER_YEAR).div(reserveFactor);
+}
 const borrowingRateConfig_HighMax_WithHigherBase: BorrowingRateConfig = {
   optimalUsageFactor: percentageToFloat("75%"),
   baseBorrowingFactor: percentageToFloat("55%").div(SECONDS_PER_YEAR),
@@ -4920,8 +4964,8 @@ const config: {
       // Funding rate configuration for single token markets
       ...fundingRateConfig_SingleToken,
 
-      // Borrowing rate configuration
-      ...borrowingRateConfig_HighMax_WithLowerBase,
+      // Borrowing rate configuration — [testnet] LINEAR model (kink off); rate set per-market below
+      ...borrowingRateConfig_Linear_NoKink,
 
       // Pool limits (same as mUSDTNGN market)
       maxLongTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max long pool
@@ -4949,9 +4993,13 @@ const config: {
 
       minCollateralFactorForOpenInterestMultiplier: exponentToFloat("5e-9"),
 
-      // Reserve factors (same as mUSDTNGN market)
-      reserveFactor: percentageToFloat("500%"), // 5x OI reserve
-      openInterestReserveFactor: percentageToFloat("500%"), // 5x OI reserve
+      // Reserve factors — [testnet] bumped 5x -> 40x to validate >10x cap via markets.ts
+      reserveFactor: percentageToFloat("4000%"), // 40x reserve
+      openInterestReserveFactor: percentageToFloat("4000%"), // 40x reserve
+
+      // [testnet] LINEAR borrow rate, priced as % of reservable liquidity:
+      // 50%/yr when fully reserved, scaling linearly to 0. Coupled to reserveFactor.
+      borrowingFactor: reservableLinearBorrowingFactor("50%", percentageToFloat("4000%")),
 
       // PnL factors
       maxPnlFactorForTraders: percentageToFloat("90%"),
@@ -5143,12 +5191,12 @@ const config: {
       ...borrowingRateConfig_LowMax_WithLowerBase,
 
       // Pool limits (same as mUSDTNGN market)
-      maxLongTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max long pool
-      maxShortTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max short pool
-      maxPoolUsdForDeposit: decimalToFloat(500_000), // $500k max deposit
+      maxLongTokenPoolAmount: expandDecimals(1_000_000, 6), // 500k mUSD max long pool
+      maxShortTokenPoolAmount: expandDecimals(1_000_000, 6), // 500k mUSD max short pool
+      maxPoolUsdForDeposit: decimalToFloat(1_000_000), // $500k max deposit
 
       // Open interest limits (same as mUSDTNGN market)
-      maxOpenInterest: decimalToFloat(500_000), // $500k max OI per side
+      maxOpenInterest: decimalToFloat(1_000_000), // $1M max OI per side
 
       // Position impact factors (same as mUSDTNGN)
       negativePositionImpactFactor: exponentToFloat("2e-9"), // 0.0000005%
@@ -5171,8 +5219,8 @@ const config: {
       minCollateralFactorForOpenInterestMultiplier: exponentToFloat("5e-9"),
 
       // Reserve factors (conservative for initial launch)
-      reserveFactor: percentageToFloat("500%"), // 5x OI reserve
-      openInterestReserveFactor: percentageToFloat("500%"), // 5x OI reserve
+      reserveFactor: percentageToFloat("700%"), // 5x OI reserve
+      openInterestReserveFactor: percentageToFloat("700%"), // 5x OI reserve
 
       // PnL factors
       maxPnlFactorForTraders: percentageToFloat("80%"), // Traders can take max 80% of pool
@@ -5223,7 +5271,7 @@ const config: {
       maxPoolUsdForDeposit: decimalToFloat(500_000), // $500k max deposit
 
       // Open interest limits (same as mUSDTARS market)
-      maxOpenInterest: decimalToFloat(500_000), // $500k max OI per side
+      maxOpenInterest: decimalToFloat(1_000_000), // $500k max OI per side
 
       // Position impact factors (same as mUSDTARS)
       negativePositionImpactFactor: exponentToFloat("2e-9"), // 0.0000005%
@@ -5246,8 +5294,8 @@ const config: {
       minCollateralFactorForOpenInterestMultiplier: exponentToFloat("5e-9"),
 
       // Reserve factors (conservative for initial launch)
-      reserveFactor: percentageToFloat("500%"), // 5x OI reserve
-      openInterestReserveFactor: percentageToFloat("500%"), // 5x OI reserve
+      reserveFactor: percentageToFloat("700%"), // 5x OI reserve
+      openInterestReserveFactor: percentageToFloat("700%"), // 5x OI reserve
 
       // PnL factors
       maxPnlFactorForTraders: percentageToFloat("80%"), // Traders can take max 80% of pool
@@ -5298,7 +5346,7 @@ const config: {
       maxPoolUsdForDeposit: decimalToFloat(500_000), // $500k max deposit
 
       // Open interest limits (same as mUSDTARS market)
-      maxOpenInterest: decimalToFloat(500_000), // $500k max OI per side
+      maxOpenInterest: decimalToFloat(1_000_000), // $500k max OI per side
 
       // Position impact factors (same as mUSDTARS)
       negativePositionImpactFactor: exponentToFloat("2e-9"), // 0.0000005%
@@ -5321,8 +5369,8 @@ const config: {
       minCollateralFactorForOpenInterestMultiplier: exponentToFloat("5e-9"),
 
       // Reserve factors (conservative for initial launch)
-      reserveFactor: percentageToFloat("500%"), // 5x OI reserve
-      openInterestReserveFactor: percentageToFloat("500%"), // 5x OI reserve
+      reserveFactor: percentageToFloat("700%"), // 5x OI reserve
+      openInterestReserveFactor: percentageToFloat("700%"), // 7x OI reserve
 
       // PnL factors
       maxPnlFactorForTraders: percentageToFloat("80%"), // Traders can take max 80% of pool
@@ -5361,24 +5409,27 @@ const config: {
       // Base configuration for single-token market
       ...singleTokenMarketConfig,
 
-      // Funding rate configuration - simple static 100% max
-      ...simpleFundingConfig_100pct,
+      // Funding rate configuration - static 40% model, matches mainnet prod NGN market
+      ...simpleFundingConfig_40pct,
 
-      // Borrowing rate configuration
-      ...borrowingRateConfig_LowMax_WithLowerBase,
+      // Borrowing rate configuration - linear (no-kink), matches mainnet prod NGN market.
+      // borrowingFactor coupled to THIS market's reserveFactor (700%) so the economic rate
+      // ("5%/yr when fully reserved") is preserved at testnet's reserve.
+      ...borrowingRateConfig_Linear_NoKink,
+      borrowingFactor: reservableLinearBorrowingFactor("5%", percentageToFloat("700%")),
 
       // Pool limits (same as mUSDTARS market)
-      maxLongTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max long pool
-      maxShortTokenPoolAmount: expandDecimals(500_000, 6), // 500k mUSD max short pool
-      maxPoolUsdForDeposit: decimalToFloat(500_000), // $500k max deposit
+      maxLongTokenPoolAmount: expandDecimals(1_000_000, 6), // 500k mUSD max long pool
+      maxShortTokenPoolAmount: expandDecimals(1_000_000, 6), // 500k mUSD max short pool
+      maxPoolUsdForDeposit: decimalToFloat(1_000_000), // $500k max deposit
 
       // Open interest limits (same as mUSDTARS market)
-      maxOpenInterest: decimalToFloat(750_000), // $500k max OI per side
+      maxOpenInterest: decimalToFloat(1_000_000), // $500k max OI per side
 
-      // Position impact factors (same as mUSDTARS)
-      negativePositionImpactFactor: exponentToFloat("2e-9"), // 0.0000005%
-      positivePositionImpactFactor: exponentToFloat("1e-9"), // 0.00000025%
-      positionImpactExponentFactor: exponentToFloat("2e0"), // Quadratic impact
+      // Position impact factors - matched to mainnet prod NGN (5e-10 both sides); exponent unchanged
+      negativePositionImpactFactor: exponentToFloat("5e-10"),
+      positivePositionImpactFactor: exponentToFloat("5e-10"),
+      positionImpactExponentFactor: exponentToFloat("2e0"), // Quadratic impact (unchanged)
 
       // Max position impact caps
       negativeMaxPositionImpactFactor: percentageToFloat("0.3%"), // 0.3% max slippage
@@ -5396,8 +5447,85 @@ const config: {
       minCollateralFactorForOpenInterestMultiplier: exponentToFloat("5e-9"),
 
       // Reserve factors (conservative for initial launch)
-      reserveFactor: percentageToFloat("500%"), // 5x OI reserve
-      openInterestReserveFactor: percentageToFloat("500%"), // 5x OI reserve
+      reserveFactor: percentageToFloat("700%"), // 5x OI reserve
+      openInterestReserveFactor: percentageToFloat("700%"), // 5x OI reserve
+
+      // PnL factors
+      maxPnlFactorForTraders: percentageToFloat("80%"), // Traders can take max 80% of pool
+      maxPnlFactorForDeposits: percentageToFloat("80%"), // Same for deposits
+      maxPnlFactorForWithdrawals: percentageToFloat("77%"), // More conservative for withdrawals
+
+      // ADL (Auto-Deleveraging) thresholds
+      maxPnlFactorForAdl: percentageToFloat("80%"),
+      minPnlFactorAfterAdl: percentageToFloat("77%"),
+
+      // Position fees - 1.5 bps, matches mainnet prod NGN market
+      positionFeeFactorForPositiveImpact: percentageToFloat("0.015%"), // 1.5 bps
+      positionFeeFactorForNegativeImpact: percentageToFloat("0.015%"), // 1.5 bps
+
+      // Liquidation fee (higher for single token)
+      liquidationFeeFactor: percentageToFloat("0.3%"),
+
+      // No atomic swap fees for single token markets
+      atomicSwapFeeFactor: bigNumberify(0),
+
+      // Position impact pool
+      positionImpactPoolDistributionRate: bigNumberify(0),
+      minPositionImpactPoolAmount: bigNumberify(0),
+    },
+    {
+      tokens: {
+        indexToken: "mUSDTNGN", // USDT/NGN exchange rate index token
+        longToken: "USDC", // USDC for long collateral
+        shortToken: "USDC", // USDC for short collateral (single token market)
+      },
+
+      // Virtual IDs for cross-market references
+      virtualTokenIdForIndexToken: hashString("PERP:USDTNGN/USDC"),
+      virtualMarketId: hashString("CRYPTO:USDTNGN/USDC"),
+
+      // Base configuration for single-token market
+      ...singleTokenMarketConfig,
+
+      // Funding rate configuration - fixed 25% at full imbalance (no dynamic ramp)
+      ...simpleFundingConfig_25pct,
+
+      // Borrowing rate configuration - 25% flat
+      ...borrowingRateConfig_LowMax_WithLowerBase,
+      baseBorrowingFactor: percentageToFloat("25%").div(SECONDS_PER_YEAR),
+      aboveOptimalUsageBorrowingFactor: percentageToFloat("25%").div(SECONDS_PER_YEAR),
+
+      // Pool limits (same as mUSDTNGN/mUSD market)
+      maxLongTokenPoolAmount: expandDecimals(1_000_000, 6), // 1M USDC max long pool
+      maxShortTokenPoolAmount: expandDecimals(1_000_000, 6), // 1M USDC max short pool
+      maxPoolUsdForDeposit: decimalToFloat(1_000_000), // $1M max deposit
+
+      // Open interest limits (same as mUSDTNGN/mUSD market)
+      maxOpenInterest: decimalToFloat(1_000_000), // $1M max OI per side
+
+      // Position impact factors (same as mUSDTNGN/mUSD)
+      negativePositionImpactFactor: exponentToFloat("2e-9"),
+      positivePositionImpactFactor: exponentToFloat("1e-9"),
+      positionImpactExponentFactor: exponentToFloat("2e0"), // Quadratic impact
+
+      // Max position impact caps
+      negativeMaxPositionImpactFactor: percentageToFloat("0.3%"), // 0.3% max slippage
+      positiveMaxPositionImpactFactor: percentageToFloat("0.3%"), // 0.3% max slippage
+
+      // Swap impact (0 for single token market)
+      negativeSwapImpactFactor: bigNumberify(0),
+      positiveSwapImpactFactor: bigNumberify(0),
+
+      // Minimum collateral factor (determines max leverage)
+      minCollateralFactor: percentageToFloat("1.9%"), // ~52x max leverage
+      minCollateralFactorForLiquidation: percentageToFloat("1%"), // Liquidation at 100x
+
+      // Dynamic min collateral based on OI
+      minCollateralFactorForOpenInterestMultiplier: exponentToFloat("5e-9"),
+
+      // Reserve factors (conservative for initial launch)
+      reserveFactor: percentageToFloat("700%"), // 7x OI reserve
+      openInterestReserveFactor: percentageToFloat("700%"), // 7x OI reserve
 
       // PnL factors
       maxPnlFactorForTraders: percentageToFloat("80%"), // Traders can take max 80% of pool

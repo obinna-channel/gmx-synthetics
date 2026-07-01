@@ -25,6 +25,7 @@ This deployment is a fork of GMX V2 for the Marks protocol, creating synthetic N
 | NVDA Stock Index | mNVDA | `0xbF159fd6ff7C70EC9A6cC15d31EfF2ae2E82B325` | 18 | [View on Explorer](https://sepolia.arbiscan.io/address/0xbF159fd6ff7C70EC9A6cC15d31EfF2ae2E82B325) |
 | USDT/PKR Index | mPKR | `0xDC7e9F5a3D337161880d084131BC16214f2F8EBD` | 18 | [View on Explorer](https://sepolia.arbiscan.io/address/0xDC7e9F5a3D337161880d084131BC16214f2F8EBD) |
 | USDT/COP Index | mCOP | `0x8d9C2d46d6ff665afb4deb6CBc1Ed5E31eB455b8` | 18 | [View on Explorer](https://sepolia.arbiscan.io/address/0x8d9C2d46d6ff665afb4deb6CBc1Ed5E31eB455b8) |
+| USD Coin | USDC | `0xe73B11Fb1e3eeEe8AF2a23079A4410Fe1B370548` | 6 | [View on Explorer](https://sepolia.arbiscan.io/address/0xe73B11Fb1e3eeEe8AF2a23079A4410Fe1B370548) |
 
 ## Markets
 
@@ -48,6 +49,7 @@ This deployment is a fork of GMX V2 for the Marks protocol, creating synthetic N
 | Market 16: mAAPL [mUSD-mUSD] | mAAPL | mUSD | mUSD | `0x8fb33464be3BE26d0BAd21B6F04e7c1Cf2B10449` | [View on Explorer](https://sepolia.arbiscan.io/address/0x8fb33464be3BE26d0BAd21B6F04e7c1Cf2B10449) |
 | Market 17: mMETA [mUSD-mUSD] | mMETA | mUSD | mUSD | `0xafd908D358315efDBA493311AbE30648DEC4d2dE` | [View on Explorer](https://sepolia.arbiscan.io/address/0xafd908D358315efDBA493311AbE30648DEC4d2dE) |
 | Market 18: mUSDTNGN [mUSD-mUSD] | mUSDTNGN | mUSD | mUSD | `0x1aF0891884AD96De1Cb1CC3fDEd67842F00926bb` | [View on Explorer](https://sepolia.arbiscan.io/address/0x1aF0891884AD96De1Cb1CC3fDEd67842F00926bb) |
+| Market 19: mUSDTNGN [USDC-USDC] | mUSDTNGN | USDC | USDC | `0x0A9aaD88Ee9548b9aAe0526277982E730d2fBD38` | [View on Explorer](https://sepolia.arbiscan.io/address/0x0A9aaD88Ee9548b9aAe0526277982E730d2fBD38) |
 
 ## Core Contracts
 

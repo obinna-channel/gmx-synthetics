@@ -689,7 +689,7 @@ const recommendedMarketConfig = {
       expectedPositionImpactRatio: 20_000,
     },
     "mUSDTNGN:mUSD:mUSD": {
-      negativePositionImpactFactor: exponentToFloat("2e-9"), // Reverted to small impact factor
+      negativePositionImpactFactor: exponentToFloat("5e-10"), // Lowered to match mainnet prod NGN
       negativeSwapImpactFactor: 0, // single token market
       expectedSwapImpactRatio: 10_000,
       expectedPositionImpactRatio: 10_000, // Allow 1:1 ratio (negative = positive)
@@ -711,6 +711,12 @@ const recommendedMarketConfig = {
       negativeSwapImpactFactor: 0, // single token market
       expectedSwapImpactRatio: 10_000,
       expectedPositionImpactRatio: 20_000,
+    },
+    "mUSDTNGN:USDC:USDC": {
+      negativePositionImpactFactor: exponentToFloat("2e-9"),
+      negativeSwapImpactFactor: 0, // single token market
+      expectedSwapImpactRatio: 10_000,
+      expectedPositionImpactRatio: 10_000, // Allow 1:1 ratio (same as mUSDTNGN:mUSD:mUSD)
     },
   },
   botanix: {
