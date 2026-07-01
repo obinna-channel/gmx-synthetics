@@ -4,7 +4,7 @@ websockets==12.0
 python-dotenv==1.0.0
 certifi  # For SSL certificate verification
 python-socketio==5.11.0  # For Socket.IO price feed
-aiohttp==3.9.1  # For HTTP API calls
+aiohttp>=3.10.0  # For HTTP API calls and Socket.IO websocket support (ClientWSTimeout)
 
 # For the existing oracle keeper
 httpx==0.25.2
