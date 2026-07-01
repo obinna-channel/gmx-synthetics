@@ -2306,14 +2306,26 @@ class OrderKeeper:
             transactions = []
 
             for token_address, price in prices.items():
-                # Build transaction with sequential nonce
-                tx = self.mock_provider.functions.setPriceWithPrecision(
+                fn = self.mock_provider.functions.setPriceWithPrecision(
                     Web3.to_checksum_address(token_address), price
-                ).build_transaction(
+                )
+                # Gas limit must cover Arbitrum's intrinsic gas, which INCLUDES the L1
+                # data-posting cost and scales with the L1 (Sepolia) base fee. A fixed
+                # 100000 cap fails with "intrinsic gas too low" when L1 spikes — a plain
+                # transfer's intrinsic was ~204k during one such spike, above the cap.
+                # estimate_gas includes the L1 component, so it adapts; +50% buffer, with
+                # a generous fallback (you only pay gasUsed, so a high limit is free).
+                try:
+                    gas_limit = int(fn.estimate_gas({"from": self.account.address}) * 1.5)
+                except Exception as ge:
+                    gas_limit = 1_000_000
+                    print(f"  ⚠️  gas estimate failed for {token_address}: {ge}; using fallback {gas_limit}")
+                # Build transaction with sequential nonce
+                tx = fn.build_transaction(
                     {
                         "from": self.account.address,
                         "nonce": nonce,  # Use tracked nonce
-                        "gas": 100000,
+                        "gas": gas_limit,
                         "gasPrice": gas_price_with_buffer,
                     }
                 )
