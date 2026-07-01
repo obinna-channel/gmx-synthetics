@@ -1302,7 +1302,7 @@ class OrderKeeper:
         self.MOCK_PROVIDER = self.load_mock_provider_address()
 
         # Price Feed Configuration
-        self.PRICE_FEED_URL = "https://marks-server-a58cc19eb539.herokuapp.com/"
+        self.PRICE_FEED_URL = "https://marks-server-mainnet-299c67be7407.herokuapp.com/"
 
         # Shared price cache and update queue
         # TODO Refactor to keep track of stock vs. non-stock prices separately.
@@ -1429,7 +1429,7 @@ class OrderKeeper:
 
         # Use the same marks-server for stocks
         stock_server_url = os.getenv(
-            "STOCK_SERVER_URL", "https://marks-server-a58cc19eb539.herokuapp.com"
+            "STOCK_SERVER_URL", "https://marks-server-mainnet-299c67be7407.herokuapp.com"
         )
 
         self.stock_feed = StockPriceFeedManager(
